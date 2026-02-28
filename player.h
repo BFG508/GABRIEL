@@ -5,7 +5,9 @@
 #define PLAYER_H
 
 // Include the main Raylib library so the compiler knows what 'Vector3' is.
+// Include the main Raylib math library for Lerp function.
 #include "raylib.h"
+#include "raymath.h"
 
 // --- ENUMERATIONS (STATES) ---
 // An 'enum' is a way to assign names to numbers. 

@@ -3,6 +3,11 @@
 # Learn more about .gitignore:
 #     https://www.atlassian.com/git/tutorials/saving-changes/gitignore
 
+# IDE and editor folders
+.vscode/
+.idea/
+*.swp
+
 # Compiled binaries and executables
 *.exe
 *.out

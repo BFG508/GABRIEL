@@ -1,5 +1,6 @@
-// Include the main Raylib library
+// Include the main Raylib libraries
 #include "raylib.h"
+#include "raymath.h"
 
 // Notice we use quotes "" for our own files, and angle brackets <> for system libraries.
 #include "player.h"
@@ -91,20 +92,35 @@ int main(void) {
             BeginMode3D(camera);
                 
                 // Draw a visual reference so we can perceive speed and movement
-                DrawGrid(50, 2.0f);
+                DrawGrid(10000, 2.0f);
 
-                // Draw the 3D model based on what the player chose.
-                // The 0.05f is the scale multiplier (shrinks the model to 5% of its original size).
+                // Decide which model to use
+                Model *currentModel = (player.type == VEHICLE_PLANE) ? &planeModel : &helicopterModel;
+                
+                // 1. Save the model's base matrix (which includes our permanent fix for crooked models)
+                Matrix baseTransform = currentModel->transform;
+                
+                // 2. Generate a dynamic rotation matrix based on the player's current Pitch and Roll
+                Matrix dynamicRotation = MatrixRotateXYZ((Vector3){ player.rotation.x, player.rotation.y, player.rotation.z });
+                
+                // 3. Combine them and apply temporarily
+                currentModel->transform = MatrixMultiply(baseTransform, dynamicRotation);
+                
+                // 4. Draw the 3D model based on what the player chose.
+                // The float number is the scale multiplier.
                 if (player.type == VEHICLE_PLANE) {
-                    DrawModel(planeModel, player.position, 0.08f, WHITE); 
+                    DrawModel(*currentModel, player.position, 0.08f, WHITE); 
                 } else if (player.type == VEHICLE_HELICOPTER) {
-                    DrawModel(helicopterModel, player.position, 0.8f, WHITE);
+                    DrawModel(*currentModel, player.position, 0.8f, WHITE);
                 }
+
+                // 5. Restore the base matrix so it doesn't spin uncontrollably next frame!
+                currentModel->transform = baseTransform;
                 
             EndMode3D(); // Switch back to 2D rendering mode
 
             // Draw the User Interface (UI) on top of the 3D world
-            DrawText("Controls: W/A/S/D (Move) | SPACE (Up) | SHIFT (Down)", 10, 10, 20, DARKGRAY);
+            DrawText("W/S: Throttle | A/D: Roll | SPACE/SHIFT: Pitch", 10, 10, 20, DARKGRAY);
         }
 
         EndDrawing(); // Tell Raylib we are done painting this frame, display it!
