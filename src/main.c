@@ -129,7 +129,11 @@ int main(void) {
             // Switch Raylib into 3D rendering mode using our camera
             BeginMode3D(camera);
                 
-                // Draw a visual reference so we can perceive speed and movement
+                // We draw the skybox exactly where the camera is. 
+                // This creates the optical illusion that the sky is infinitely far away.
+                DrawModel(skyboxModel, camera.position, 1.0f, WHITE);
+
+                // Draw terrain
                 DrawModel(environmentModel, (Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
 
                 // Decide which model to use
@@ -140,30 +144,55 @@ int main(void) {
                     currentModel = &helicopterModel;
                 }
                 
-                // 1. Save the model's base matrix (which includes our permanent fix for crooked models)
+                // 1. Save the model's base matrix
                 Matrix baseTransform = currentModel->transform;
                 
-                // 2. Generate a dynamic rotation matrix based on the player's current Pitch and Roll
-                Matrix dynamicRotation = MatrixRotateXYZ((Vector3){ player.rotation.x, player.rotation.y, player.rotation.z });
+                // 2. Generate a dynamic rotation matrix (STRICT AEROSPACE ORDER)
+                // By multiplying matrices individually (Roll -> Pitch -> Yaw), 
+                // we prevent the axes from mixing up when pressing multiple keys (Gimbal Lock).
+                Matrix matRoll = MatrixRotateZ(player.rotation.z);
+                Matrix matPitch = MatrixRotateX(player.rotation.x);
+                Matrix matYaw = MatrixRotateY(player.rotation.y);
+                
+                // Multiply Roll and Pitch first, then apply Yaw
+                Matrix dynamicRotation = MatrixMultiply(matRoll, matPitch);
+                dynamicRotation = MatrixMultiply(dynamicRotation, matYaw);
                 
                 // 3. Combine them and apply temporarily
                 currentModel->transform = MatrixMultiply(baseTransform, dynamicRotation);
                 
-                // 4. Draw the 3D model based on what the player chose.
-                // The float number is the scale multiplier.
+                // 4. Draw the 3D model
                 if (player.type == VEHICLE_PLANE) {
                     DrawModel(*currentModel, player.position, 0.08f, WHITE); 
                 } else if (player.type == VEHICLE_HELICOPTER) {
                     DrawModel(*currentModel, player.position, 0.8f, WHITE);
                 }
 
-                // 5. Restore the base matrix so it doesn't spin uncontrollably next frame!
+                // 5. Restore the base matrix
                 currentModel->transform = baseTransform;
                 
             EndMode3D(); // Switch back to 2D rendering mode
 
+            // --- AERONAUTICAL HUD ---
+            // Altitude (Multiply Y so it looks like real feet/meters)
+            DrawText(TextFormat("ALTITUDE: %.0f ft", player.position.y * 10.0f), 20, 80, 20, LIME);
+
+            // Calculate max throttle depending on the current vehicle
+            float maxThrottle;
+            if (player.type == VEHICLE_PLANE) {
+                maxThrottle = 0.8f;
+            } else {
+                maxThrottle = 0.4f;
+            }
+            
+            // Calculate true percentage (Current / Max * 100)
+            int powerPercentage = (int)((-player.throttle / maxThrottle) * 100.0f);
+            
+            // Draw the exact power percentage
+            DrawText(TextFormat("POWER: %d %%", powerPercentage), 20, 110, 20, LIME);
+
             // Draw the User Interface (UI) on top of the 3D world
-            DrawText("W/S: Throttle | A/D: Roll | SPACE/SHIFT: Pitch", 10, 10, 20, DARKGRAY);
+            DrawText("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 10, 10, 20, DARKGRAY);
         }
 
         EndDrawing(); // Tell Raylib we are done painting this frame, display it!

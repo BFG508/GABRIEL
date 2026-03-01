@@ -12,10 +12,9 @@ A basic but dynamic 3D flight simulator written purely in C. This project was cr
 This project uses **Raylib**, a highly modular and simple-to-use library to enjoy videogames programming without the overhead of massive game engines.
 
 ## 🎮 Controls
-* **W / S:** Throttle Up / Throttle Down (Engine Power)
-* **A / D:** Roll Left / Roll Right (Sideways movement)
-* **SPACE:** Pitch Up (Gain altitude)
-* **SHIFT:** Pitch Down (Lose altitude)
+* **W / S:** Throttle Up / Down (Engine Power)
+* **A / D:** Roll Left / Right (Sideways movement)
+* **SHIFT / SPACE:** Pitch Up / Down (Gain or lose altitude)
 
 ## ⚙️ Prerequisites & Compilation
 This project uses a universal `Makefile`. You must have **Raylib** installed on your system to compile it.
@@ -43,3 +42,8 @@ This project uses the following open-source 3D models from Sketchfab:
 * **SR-71 Blackbird** model by [KOG_THORNS](https://sketchfab.com/ioai25312)
 * **AH-64 Apache** model by [Muhamad Mirza Arrafi](https://sketchfab.com/nazidefenseforceofficial)
 * **Terrain** model by [EntropyNine](https://sketchfab.com/entropy9ine)
+* **Skybox** model by [djvivid](https://sketchfab.com/djvivid)
+
+Also this project uses the following open-source sounds from Freesound:
+* **Airplane** sound by [daliacoss](https://freesound.org/people/daliacoss/)
+* **Helicopter** model by [UnderlinedDesigns](https://freesound.org/people/UnderlinedDesigns/)

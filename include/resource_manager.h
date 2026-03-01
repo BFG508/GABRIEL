@@ -17,6 +17,7 @@ extern Texture2D mapTexture;    // Stores the 2D image for the ground
 
 extern Model mapModel;          // Stores the 3D plane for the ground
 extern Model environmentModel;  // Stores the 3D data for the scenario
+extern Model skyboxModel;       // Stores the 3D data for the infinite sky
 extern Model planeModel;        // Stores the 3D data for the SR-71 Blackbird
 extern Model helicopterModel;   // Stores the 3D data for the AH-64 Apache
 

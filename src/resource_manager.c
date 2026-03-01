@@ -9,9 +9,10 @@
 Texture2D mapTexture;
 
 Model mapModel;
+Model environmentModel;
+Model skyboxModel;
 Model planeModel;
 Model helicopterModel;
-Model environmentModel;
 
 Sound planeSound;  
 Sound helicopterSound;
@@ -31,6 +32,7 @@ void LoadGameResources(void) {
     helicopterModel.transform = MatrixMultiply(helicopterModel.transform, MatrixRotateY(90.0f * DEG2RAD));
 
     environmentModel = LoadModel("resources/models/terrain.glb");
+    skyboxModel = LoadModel("resources/models/skybox.glb");
 
     planeSound = LoadSound("resources/sounds/plane.wav");
     helicopterSound = LoadSound("resources/sounds/helicopter.wav");
@@ -46,6 +48,7 @@ void UnloadGameResources(void) {
     UnloadModel(planeModel);
     UnloadModel(helicopterModel);
     UnloadModel(environmentModel);
+    UnloadModel(skyboxModel);
     
     UnloadSound(planeSound);
     UnloadSound(helicopterSound);
