@@ -11,11 +11,17 @@ Texture2D mapTexture;
 Model mapModel;
 Model environmentModel;
 Model skyboxModel;
+
 Model planeModel;
 Model helicopterModel;
 
+Model ringModel;
+
+
 Sound planeSound;  
 Sound helicopterSound;
+
+Music menuMusic;
 
 // --- LOAD FUNCTION ---
 // This function reads the heavy files from the slow Hard Drive 
@@ -25,17 +31,29 @@ void LoadGameResources(void) {
     // It automatically reads the geometry and the embedded textures from the .glb files.
     // NOTE: If you misspell the file name, Raylib won't crash your game; 
     // it will just print a yellow WARNING in the console and show nothing on screen.
+
+    // 1. Models
+    environmentModel = LoadModel("resources/models/terrain.glb");
+    skyboxModel = LoadModel("resources/models/skybox.glb");
+
     planeModel = LoadModel("resources/models/blackbird.glb");
     planeModel.transform = MatrixMultiply(planeModel.transform, MatrixRotateY(90.0f * DEG2RAD));
 
     helicopterModel = LoadModel("resources/models/apache.glb");
     helicopterModel.transform = MatrixMultiply(helicopterModel.transform, MatrixRotateY(90.0f * DEG2RAD));
 
-    environmentModel = LoadModel("resources/models/terrain.glb");
-    skyboxModel = LoadModel("resources/models/skybox.glb");
 
+    ringModel = LoadModel("resources/models/ring.glb");
+    ringModel.transform = MatrixMultiply(ringModel.transform, MatrixRotateX(90.0f * DEG2RAD));
+
+    // 2. Sounds & Music
     planeSound = LoadSound("resources/sounds/plane.wav");
+    SetSoundVolume(planeSound, 1.30f);
     helicopterSound = LoadSound("resources/sounds/helicopter.wav");
+    SetSoundVolume(helicopterSound, 0.60f);
+
+    menuMusic = LoadMusicStream("resources/sounds/menu.mp3");
+    SetMusicVolume(menuMusic, 0.65f);
 }
 
 // --- UNLOAD FUNCTION ---

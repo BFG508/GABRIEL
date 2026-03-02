@@ -1,3 +1,6 @@
+// Include stdbool library to use booleans
+#include <stdbool.h>
+
 // Include the main Raylib libraries
 #include "raylib.h"
 #include "raymath.h"
@@ -5,6 +8,8 @@
 // Notice we use quotes "" for our own files, and angle brackets <> for system libraries.
 #include "player.h"
 #include "resource_manager.h"
+#include "race.h"
+
 
 // --- GAME STATES (STATE MACHINE) ---
 // A Finite State Machine (FSM) is a core concept in game dev.
@@ -18,7 +23,7 @@ typedef enum GameState {
 int main(void) {
     // --- 1. INITIALIZATION (SETUP) ---
     // Open the window and set the title
-    InitWindow(800, 600, "Simple Flight Simulator");
+    InitWindow(1200, 900, "Simple Flight Simulator");
 
     InitAudioDevice(); // Initialize audio device BEFORE loading resources
 
@@ -39,6 +44,16 @@ int main(void) {
     camera.fovy = 60.0f;                       // Field of View (zoom level)
     camera.projection = CAMERA_PERSPECTIVE;    // Gives a realistic 3D depth effect
 
+    // First person camera toggle
+    bool isFirstPerson = false;
+    
+    // Toggle to hide/show the controls UI
+    bool showControls = true;
+
+    // Initialize the Race System (The Track and the Referee)
+    RaceSystem race = InitRace();
+
+
     // --- 2. THE MAIN GAME LOOP ---
     // This loop runs 60 times per second until the user clicks the X or presses ESC.
     while (!WindowShouldClose()) {
@@ -47,11 +62,22 @@ int main(void) {
         // Here we process input and move things, but we DO NOT draw anything yet.
         if (currentState == STATE_MENU) {
             
+            // --- MENU AUDIO LOGIC ---
+            // UpdateMusicStream must be called every single frame to keep the buffer flowing
+            UpdateMusicStream(menuMusic);
+            
+            // If the music isn't playing yet, start it
+            if (!IsMusicStreamPlaying(menuMusic)) {
+                PlayMusicStream(menuMusic);
+            }
+            
             // If we are in the menu, wait for the user to press 1 or 2
             if (IsKeyPressed(KEY_ONE)) {
+                StopMusicStream(menuMusic);         // Stop the chill music!
                 player = InitPlayer(VEHICLE_PLANE); // Initialize as a plane
                 currentState = STATE_PLAYING;       // Change the state to start the game!
             } else if (IsKeyPressed(KEY_TWO)) {
+                StopMusicStream(menuMusic);              // Stop the chill music!
                 player = InitPlayer(VEHICLE_HELICOPTER); // Initialize as a helicopter
                 currentState = STATE_PLAYING;            // Change the state to start the game!
             }
@@ -59,15 +85,27 @@ int main(void) {
         } else if (currentState == STATE_PLAYING) {
             
             // --- MID-FLIGHT VEHICLE SWITCHING ---
-            // We just change the 'type' variable. We DON'T call InitPlayer() again
-            // because that would reset our position and velocity back to zero!
             if (IsKeyPressed(KEY_ONE)) player.type = VEHICLE_PLANE;
             if (IsKeyPressed(KEY_TWO)) player.type = VEHICLE_HELICOPTER;
+
+            // --- QUICK RESTART ---
+            // If the player makes a mistake, press R to restart the race instantly
+            if (IsKeyPressed(KEY_R)) {
+                race = InitRace();                // Resets all rings and stopwatch
+                player = InitPlayer(player.type); // Teleports player back to origin
+            }
+
+            // If we are playing, update the vehicle's physics.
+            UpdatePlayer(&player);
 
             // If we are playing, update the vehicle's physics.
             // Notice the '&' (address-of operator). We are passing a POINTER to our player
             // so the UpdatePlayer function can modify the real data, not a copy.
             UpdatePlayer(&player);
+
+            // Update the race logic (Stopwatch and ring collisions)
+            // We pass pointers to both the race and the player so the referee can check distances.
+            UpdateRace(&race, &player);
 
             // --- DYNAMIC AUDIO LOGIC ---
             if (player.type == VEHICLE_PLANE) {
@@ -94,19 +132,34 @@ int main(void) {
                 SetSoundPitch(helicopterSound, pitch);
             }
             
-            // --- DYNAMIC CHASE CAMERA ---
-            // 1. Where should the camera look? Directly at the player.
-            camera.target = player.position;
+            // --- DYNAMIC CAMERA LOGIC ---
+            // Toggle camera mode when pressing 'C'
+            if (IsKeyPressed(KEY_C)) isFirstPerson = !isFirstPerson;
             
-            // 2. Camera configuration parameters
-            float cameraDistance = 4.0f; // How far behind the plane
-            float cameraHeight = 1.5f;   // How high above the plane
+            // NEW: Toggle controls visibility when pressing 'H'
+            if (IsKeyPressed(KEY_H)) showControls = !showControls;
 
-            // 3. Calculate the position strictly BEHIND the plane using Trigonometry
-            // We use the player's Yaw (rotation.y) to know where "behind" is right now.
-            camera.position.x = player.position.x + (sinf(player.rotation.y) * cameraDistance);
-            camera.position.y = player.position.y + cameraHeight;
-            camera.position.z = player.position.z + (cosf(player.rotation.y) * cameraDistance);
+            if (isFirstPerson) {
+                // --- 1st PERSON (COCKPIT) ---
+                // Place camera exactly at player's position, slightly elevated for eye level
+                camera.position = (Vector3){ player.position.x, player.position.y + 0.5f, player.position.z };
+                
+                // Calculate exactly where the nose of the vehicle is pointing using Trigonometry
+                // (We use negative Sine/Cosine because moving forward means moving into -Z)
+                camera.target.x = camera.position.x - (sinf(player.rotation.y) * cosf(player.rotation.x));
+                camera.target.y = camera.position.y +  sinf(player.rotation.x); 
+                camera.target.z = camera.position.z - (cosf(player.rotation.y) * cosf(player.rotation.x));
+                
+            } else {
+                // --- 3rd PERSON (CHASE) ---
+                camera.target = player.position;
+                float cameraDistance = 4.0f; 
+                float cameraHeight = 1.5f;   
+
+                camera.position.x = player.position.x + (sinf(player.rotation.y) * cameraDistance);
+                camera.position.y = player.position.y + cameraHeight;
+                camera.position.z = player.position.z + (cosf(player.rotation.y) * cameraDistance);
+            }
         }
 
         // --- B) DRAW PHASE (RENDERING) ---
@@ -119,10 +172,25 @@ int main(void) {
 
         if (currentState == STATE_MENU) {
             
-            // Draw 2D text for the Main Menu
-            DrawText("FLIGHT SIMULATOR", 220, 200, 30, DARKBLUE);
-            DrawText("Press [1] to fly the SR-71 Blackbird", 200, 300, 20, DARKGRAY);
-            DrawText("Press [2] to fly the AH-64 Apache", 200, 350, 20, DARKGRAY);
+            // --- MAIN MENU ---
+            // We use MeasureText to dynamically calculate the width of the string.
+            // This allows us to perfectly center it by subtracting its width from the screen width and dividing by 2.
+            
+            const char *title = "SIMPLE FLIGHT SIMULATOR";
+            int titleWidth = MeasureText(title, 50); // Increased font size to 50 for the bigger screen
+            DrawText(title, (1200 - titleWidth) / 2, 300, 50, DARKBLUE);
+
+            const char *author = "Author: Benito Fernandez";
+            int authorWidth = MeasureText(author, 35); // Increased font size to 50 for the bigger screen
+            DrawText(author, (1200 - authorWidth) / 2, 380, 35, WHITE);
+            
+            const char *opt1 = "Press [1] to fly the SR-71 Blackbird";
+            int opt1Width = MeasureText(opt1, 25); // Increased font size to 25
+            DrawText(opt1, (1200 - opt1Width) / 2, 460, 25, DARKGRAY);
+            
+            const char *opt2 = "Press [2] to fly the AH-64 Apache";
+            int opt2Width = MeasureText(opt2, 25);
+            DrawText(opt2, (1200 - opt2Width) / 2, 520, 25, DARKGRAY);
             
         } else if (currentState == STATE_PLAYING) {
             
@@ -135,6 +203,10 @@ int main(void) {
 
                 // Draw terrain
                 DrawModel(environmentModel, (Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
+
+                // Draw the floating 3D rings and the navigation arrow for the race
+                DrawRace3D(&race, &player);
+
 
                 // Decide which model to use
                 Model *currentModel;
@@ -162,20 +234,50 @@ int main(void) {
                 currentModel->transform = MatrixMultiply(baseTransform, dynamicRotation);
                 
                 // 4. Draw the 3D model
-                if (player.type == VEHICLE_PLANE) {
-                    DrawModel(*currentModel, player.position, 0.08f, WHITE); 
-                } else if (player.type == VEHICLE_HELICOPTER) {
-                    DrawModel(*currentModel, player.position, 0.8f, WHITE);
+                if (!isFirstPerson) {
+                    if (player.type == VEHICLE_PLANE) {
+                        DrawModel(*currentModel, player.position, 0.08f, WHITE); 
+                    } else if (player.type == VEHICLE_HELICOPTER) {
+                        DrawModel(*currentModel, player.position, 0.8f, WHITE);
+                    }
                 }
 
                 // 5. Restore the base matrix
                 currentModel->transform = baseTransform;
+
+                // 6. Draw smoke particles
+                // We loop through the pool and draw a cube for every active particle
+                for (int i = 0; i < MAX_PARTICLES; i++) {
+                    if (player.smoke[i].active) {
+                        
+                        // White with transparency (Max alpha of 0.6f so it's not fully opaque)
+                        Color smokeColor = Fade(WHITE, player.smoke[i].life * 0.6f);
+                        
+                        // Smaller size: Starts at 0.1 and grows up to 0.8
+                        float size = 0.1f + ((1.0f - player.smoke[i].life) * 0.7f);
+                        
+                        DrawSphere(player.smoke[i].position, size, smokeColor);
+                    }
+                }
                 
             EndMode3D(); // Switch back to 2D rendering mode
 
+            // --- UI CONTROLS (TOGGLEABLE) ---
+            if (showControls) {
+                // Main controls help
+                DrawText("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 20, 20, 20, DARKGRAY);
+            } else {
+                // A tiny, non-intrusive reminder when hidden
+                DrawText("Press [H] to show controls", 20, 20, 10, GRAY);
+            }
+
+            // Draw the Race Stopwatch and remaining rings on the screen (Centered)
+            DrawRaceUI(&race);
+
             // --- AERONAUTICAL HUD ---
+            // Moved to the bottom-left corner so it doesn't overlap with the race timer
             // Altitude (Multiply Y so it looks like real feet/meters)
-            DrawText(TextFormat("ALTITUDE: %.0f ft", player.position.y * 10.0f), 20, 80, 20, LIME);
+            DrawText(TextFormat("ALTITUDE: %.0f ft", player.position.y * 10.0f), 20, 800, 20, LIME);
 
             // Calculate max throttle depending on the current vehicle
             float maxThrottle;
@@ -189,10 +291,7 @@ int main(void) {
             int powerPercentage = (int)((-player.throttle / maxThrottle) * 100.0f);
             
             // Draw the exact power percentage
-            DrawText(TextFormat("POWER: %d %%", powerPercentage), 20, 110, 20, LIME);
-
-            // Draw the User Interface (UI) on top of the 3D world
-            DrawText("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 10, 10, 20, DARKGRAY);
+            DrawText(TextFormat("POWER: %d %%", powerPercentage), 20, 840, 20, LIME);
         }
 
         EndDrawing(); // Tell Raylib we are done painting this frame, display it!

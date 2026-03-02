@@ -1,9 +1,11 @@
+// Include math library for trigonometric functions.
+#include <math.h>
+
 // We include our own header file so this .c file knows what a 'Player' is.
 // We include resource_manager.h so this .c file knows about the 'environmentModel'.
-// Include the math library for trigonometric functions.
 #include "player.h"
 #include "resource_manager.h"
-#include <math.h>
+
 
 // --- FACTORY FUNCTION ---
 // This function creates a new Player from scratch and hands it back to main.c.
@@ -17,7 +19,7 @@ Player InitPlayer(VehicleType type) {
     p.position = (Vector3){ 0.0f, 5.0f, 0.0f };   // Start 5 unit above the ground
     p.velocity = (Vector3){ 0.0f, 0.0f, 0.0f };   // Start completely stationary
     p.throttle = 0.0f;                            // Engine is at 0%
-    p.acceleration = 0.005f;                      // Engine power per frame
+    p.acceleration = 0.004f;                      // Engine power per frame
     p.friction = 0.95f;                           // Air resistance/drag (loses 5% of speed per frame)
     p.type = type;                                // Assign the chosen vehicle model
     
@@ -43,19 +45,20 @@ void UpdatePlayer(Player *player) {
     } 
     else if (player->type == VEHICLE_HELICOPTER) {
         // Helicopters are slower, but we allow a slight backward movement.
-        if (player->throttle < -0.4f) player->throttle = -0.4f; 
+        if (player->throttle < -0.4f) player->throttle = -0.4f;
         if (player->throttle > 0.1f) player->throttle = 0.1f;   
     }
 
     // Apply the current engine power directly to the Z velocity.
     player->velocity.z = player->throttle;
 
+
     // --- 2. STEERING (YAW) & VISUAL TILT (ROLL/PITCH) ---
     // We create temporary variables to store the angle the player WANTS to reach this frame.
     float targetRoll = 0.0f;  // Roll: Tilting wings left/right
     float targetPitch = 0.0f; // Pitch: Pointing nose up/down
 
-    // A and D now ROTATE the vehicle (Yaw) instead of just sliding it sideways
+    // A and D ROTATE the vehicle (Yaw)
     if (IsKeyDown(KEY_A)) {
         player->rotation.y += 0.02f; // Rotate nose left
         targetRoll = 0.4f;           // Target tilt left
@@ -65,11 +68,13 @@ void UpdatePlayer(Player *player) {
         targetRoll = -0.4f;          // Target tilt right
     }
 
+
     // --- 3. CALCULATE DIRECTION VECTOR (TRIGONOMETRY) ---
     // We use Sine and Cosine to distribute the engine's power across the X and Z axes
     // based on the direction the vehicle is currently facing (Yaw angle).
     player->velocity.x = player->throttle * sinf(player->rotation.y);
     player->velocity.z = player->throttle * cosf(player->rotation.y);
+
 
     // --- 4. PHYSICS: GRAVITY & LIFT ---
     // A constant downward force pulling the vehicle to the ground every frame.
@@ -111,18 +116,21 @@ void UpdatePlayer(Player *player) {
         }
     }
 
+
     // --- 5. APPLY FRICTION (MOMENTUM DECAY) ---
     // We ONLY apply friction to the Y axis (vertical). X and Z are engine-driven.
     player->velocity.y *= player->friction;
+
 
     // --- 6. ADVANCED COLLISION DETECTION (DUAL RAYCASTING) ---
     // A) Forward Ray (Crashes) - Detects mountains in front of the aircraft
     Ray forwardRay = { 0 };
     forwardRay.position = player->position;
+
     forwardRay.direction = (Vector3){ 
-        sinf(player->rotation.y) * cosf(player->rotation.x), 
-        -sinf(player->rotation.x), 
-        cosf(player->rotation.y) * cosf(player->rotation.x) 
+        -sinf(player->rotation.y) * cosf(player->rotation.x), 
+         sinf(player->rotation.x), 
+        -cosf(player->rotation.y) * cosf(player->rotation.x) 
     };
 
     // B) Satellite Ray (Ground detection) - Shoots from 1000 units directly downwards
@@ -161,16 +169,19 @@ void UpdatePlayer(Player *player) {
         player->position.z -= forwardRay.direction.z * 0.5f;
     }
 
+
     // --- 7. UPDATE POSITION ---
     // Update the actual coordinates in the 3D world based on current velocity.
     player->position.x += player->velocity.x;
     player->position.y += player->velocity.y;
     player->position.z += player->velocity.z;
 
+
     // --- 8. SMOOTH INTERPOLATION ---
     // Lerp gradually changes the current rotation towards the target rotation over time.
     player->rotation.z = Lerp(player->rotation.z, targetRoll, 0.05f);  
     player->rotation.x = Lerp(player->rotation.x, targetPitch, 0.05f); 
+
 
     // --- 9. DYNAMIC FLOOR COLLISION ---
     // We now use the actual 3D ground height from our satellite ray!
@@ -186,5 +197,69 @@ void UpdatePlayer(Player *player) {
         
         // When touching the ground, smoothly force the nose back to a level position
         player->rotation.x = Lerp(player->rotation.x, 0.0f, 0.1f);
+    }
+
+    // --- 10. PARTICLE SYSTEM (TWIN SMOKE TRAILS) ---
+    if (player->type != VEHICLE_PLANE) {
+        // If it's not the plane, instantly kill all particles
+        for (int i = 0; i < MAX_PARTICLES; i++) {
+            player->smoke[i].active = false;
+        }
+        player->smokeDelayTimer = 0.0f; // Reset the timer
+    } else {
+        // If it is the plane, advance the timer
+        player->smokeDelayTimer += 1.0f;
+        
+        // 1. Emit smoke only if accelerating AND 1 second (60 frames) has passed since switching
+        if (player->throttle < -0.1f && player->smokeDelayTimer > 60.0f) {
+            
+            // Calculate the "Right" vector based on where we are looking (Yaw)
+            float rightX =  cosf(player->rotation.y);
+            float rightZ = -sinf(player->rotation.y);
+            float engineOffset = 0.35f; // Distance from the center to each engine
+            
+            int spawned = 0;
+            
+            for (int i = 0; i < MAX_PARTICLES; i++) {
+                if (!player->smoke[i].active) {
+                    player->smoke[i].active = true;
+                    player->smoke[i].life = 1.0f; 
+                    
+                    // If spawned is 0, right engine (1.0). If 1, left engine (-1.0)
+                    float sideDir = (spawned == 0) ? 1.0f : -1.0f; 
+                    
+                    player->smoke[i].position = (Vector3){ 
+                        player->position.x + (rightX * engineOffset * sideDir), 
+                        player->position.y - 0.15f, 
+                        player->position.z + (rightZ * engineOffset * sideDir) 
+                    };
+
+                    // Generate a tiny random velocity for horizontal spread (turbulence)
+                    player->smoke[i].velocity.x = (float)GetRandomValue(-15, 15) / 1000.0f;
+                    player->smoke[i].velocity.y = 0.02f; // Upward drift
+                    player->smoke[i].velocity.z = (float)GetRandomValue(-15, 15) / 1000.0f;
+                    
+                    spawned++;
+                    if (spawned >= 2) break; // Exit the loop once both particles have spawned
+                }
+            }
+        }
+    }
+
+    // 2. Update active particles
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        if (player->smoke[i].active) {
+            player->smoke[i].life -= 0.02f; 
+            player->smoke[i].position.y += 0.02f;
+
+            // Apply physical drift
+            player->smoke[i].position.x += player->smoke[i].velocity.x;
+            player->smoke[i].position.y += player->smoke[i].velocity.y;
+            player->smoke[i].position.z += player->smoke[i].velocity.z;
+            
+            if (player->smoke[i].life <= 0.0f) {
+                player->smoke[i].active = false;
+            }
+        }
     }
 }

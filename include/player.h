@@ -20,16 +20,30 @@ typedef enum VehicleType {
     VEHICLE_HELICOPTER      // Represents the AH-64 Apache
 } VehicleType;
 
+
 // --- DATA STRUCTURES ---
 // A 'struct' groups related variables into a single package.
+
+#define MAX_PARTICLES 200 // Maximum number of smoke particles on screen
+typedef struct Particle {
+    Vector3 position; // Where the smoke is in the 3D world
+    Vector3 velocity; // Controls the chaotic drift
+    float life;       // How much time it has left before disappearing (1.0f to 0.0f)
+    bool active;      // Is this particle currently being used?
+} Particle;
 typedef struct Player {
-    Vector3 position;     // Current (X, Y, Z) coordinates in the 3D world
-    Vector3 velocity;     // Current speed and direction of movement
-    Vector3 rotation;     // Controls the visual tilt (Pitch, Yaw, Roll)
-    float throttle;       // Engine power (Continuous movement)
-    float acceleration;   // How quickly the vehicle gains speed when a key is pressed
-    float friction;       // Momentum decay multiplier (slows the vehicle down over time)
-    VehicleType type;     // Stores whether the player chose the plane or the helicopter
+    Vector3 position;              // Current (X, Y, Z) coordinates in the 3D world
+    Vector3 velocity;              // Current speed and direction of movement
+    Vector3 rotation;              // Controls the visual tilt (Pitch, Yaw, Roll)
+
+    float throttle;                // Engine power (Continuous movement)
+    float acceleration;            // How quickly the vehicle gains speed when a key is pressed
+    float friction;                // Momentum decay multiplier (slows the vehicle down over time)
+
+    VehicleType type;              // Stores whether the player chose the plane or the helicopter
+
+    float smokeDelayTimer;         // Timer for vehicle's switching
+    Particle smoke[MAX_PARTICLES]; // Particle pool
 } Player;
 
 
