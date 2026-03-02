@@ -48,7 +48,7 @@ void LoadGameResources(void) {
 
     // 2. Sounds & Music
     planeSound = LoadSound("resources/sounds/plane.wav");
-    SetSoundVolume(planeSound, 1.30f);
+    SetSoundVolume(planeSound, 1.50f);
     helicopterSound = LoadSound("resources/sounds/helicopter.wav");
     SetSoundVolume(helicopterSound, 0.60f);
 

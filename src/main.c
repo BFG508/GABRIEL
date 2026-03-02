@@ -172,25 +172,29 @@ int main(void) {
 
         if (currentState == STATE_MENU) {
             
-            // --- MAIN MENU ---
-            // We use MeasureText to dynamically calculate the width of the string.
-            // This allows us to perfectly center it by subtracting its width from the screen width and dividing by 2.
+            // --- MAIN MENU (DYNAMIC RESOLUTION) ---
+            int screenWidth = GetScreenWidth();
+            int screenHeight = GetScreenHeight();
             
             const char *title = "SIMPLE FLIGHT SIMULATOR";
-            int titleWidth = MeasureText(title, 50); // Increased font size to 50 for the bigger screen
-            DrawText(title, (1200 - titleWidth) / 2, 300, 50, DARKBLUE);
+            int titleWidth = MeasureText(title, 50); 
+            // Placed at 25% of the screen height
+            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.25f, 50, DARKBLUE);
 
             const char *author = "Author: Benito Fernandez";
-            int authorWidth = MeasureText(author, 35); // Increased font size to 50 for the bigger screen
-            DrawText(author, (1200 - authorWidth) / 2, 380, 35, WHITE);
+            int authorWidth = MeasureText(author, 35); 
+            // Placed slightly below the title (approx 33% height)
+            DrawText(author, (screenWidth - authorWidth) / 2, screenHeight * 0.33f, 35, WHITE);
             
             const char *opt1 = "Press [1] to fly the SR-71 Blackbird";
-            int opt1Width = MeasureText(opt1, 25); // Increased font size to 25
-            DrawText(opt1, (1200 - opt1Width) / 2, 460, 25, DARKGRAY);
+            int opt1Width = MeasureText(opt1, 25); 
+            // Placed at 45% of the screen height
+            DrawText(opt1, (screenWidth - opt1Width) / 2, screenHeight * 0.45f, 25, DARKGRAY);
             
             const char *opt2 = "Press [2] to fly the AH-64 Apache";
             int opt2Width = MeasureText(opt2, 25);
-            DrawText(opt2, (1200 - opt2Width) / 2, 520, 25, DARKGRAY);
+            // Placed at 52% of the screen height
+            DrawText(opt2, (screenWidth - opt2Width) / 2, screenHeight * 0.52f, 25, DARKGRAY);
             
         } else if (currentState == STATE_PLAYING) {
             
@@ -274,10 +278,12 @@ int main(void) {
             // Draw the Race Stopwatch and remaining rings on the screen (Centered)
             DrawRaceUI(&race);
 
-            // --- AERONAUTICAL HUD ---
-            // Moved to the bottom-left corner so it doesn't overlap with the race timer
-            // Altitude (Multiply Y so it looks like real feet/meters)
-            DrawText(TextFormat("ALTITUDE: %.0f ft", player.position.y * 10.0f), 20, 800, 20, LIME);
+
+            // --- AERONAUTICAL HUD (DYNAMIC RESOLUTION) ---
+            int screenHeight = GetScreenHeight();
+            
+            // Anchored 100 pixels above the bottom edge
+            DrawText(TextFormat("ALTITUDE: %.0f ft", player.position.y * 10.0f), 20, screenHeight - 100, 20, LIME);
 
             // Calculate max throttle depending on the current vehicle
             float maxThrottle;
@@ -286,7 +292,7 @@ int main(void) {
             } else {
                 maxThrottle = 0.4f;
             }
-            
+
             // Calculate true percentage (Current / Max * 100)
             int powerPercentage = (int)((-player.throttle / maxThrottle) * 100.0f);
             

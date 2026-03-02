@@ -133,7 +133,7 @@ void UpdateRace(RaceSystem *race, Player *player) {
         if (i == race->targetRing) {
             
             // We restrict the valid scoring zone to only the inner 65% of the ring
-            float validHoleRadius = ring->radius * 0.05f;
+            float validHoleRadius = ring->radius * 0.15f;
 
             if (distance2D <= validHoleRadius && depthDistance < 1.0f) {
                 ring->active = false;
@@ -222,18 +222,34 @@ void DrawRace3D(RaceSystem *race, Player *player) {
 // This must be called OUTSIDE BeginMode3D() in main.c, right next to your telemetry.
 void DrawRaceUI(RaceSystem *race) {
     
+    // Get current screen dimensions dynamically
+    int screenWidth = GetScreenWidth();
+    int screenHeight = GetScreenHeight();
+    
     if (race->isRaceActive) {
-        // Draw the Stopwatch at the top center of the screen (Screen is 1200px wide)
-        // %.2f formatting ensures we always see 2 decimal places
-        DrawText(TextFormat("RACE TIME: %.2f", race->timer), 480, 60, 30, WHITE);
+        
+        // 1. Draw the Stopwatch at 5% from the top
+        const char *timerText = TextFormat("RACE TIME: %.2f", race->timer);
+        int timerWidth = MeasureText(timerText, 30);
+        DrawText(timerText, (screenWidth - timerWidth) / 2, screenHeight * 0.08f, 30, WHITE);
 
-        // Draw progress slightly below the timer
-        DrawText(TextFormat("TARGET RING: %d / %d", race->targetRing + 1, MAX_RINGS), 500, 90, 20, GOLD);
+        // 2. Draw progress at 10% from the top
+        const char *ringText = TextFormat("TARGET RING: %d / %d", race->targetRing + 1, MAX_RINGS);
+        int ringWidth = MeasureText(ringText, 20);
+        DrawText(ringText, (screenWidth - ringWidth) / 2, screenHeight * 0.13f, 20, GOLD);
+        
     } 
     // Only draw the victory message if less than 5 seconds have passed
     else if (race->isFinished && race->finishedTimer < 5.0f) {
-        // Draw victory message perfectly centered in the middle of the screen
-        DrawText("CIRCUIT COMPLETE!", 400, 400, 40, LIME);
-        DrawText(TextFormat("FINAL TIME: %.2f SECONDS", race->timer), 400, 450, 30, WHITE);
+        
+        // Victory message perfectly centered horizontally, at 40% height
+        const char *winText = "CIRCUIT COMPLETE!";
+        int winWidth = MeasureText(winText, 40);
+        DrawText(winText, (screenWidth - winWidth) / 2, screenHeight * 0.4f, 40, LIME);
+        
+        // Final time perfectly centered horizontally, at 50% height
+        const char *timeText = TextFormat("FINAL TIME: %.2f SECONDS", race->timer);
+        int timeWidth = MeasureText(timeText, 30);
+        DrawText(timeText, (screenWidth - timeWidth) / 2, screenHeight * 0.5f, 30, WHITE);
     }
 }
