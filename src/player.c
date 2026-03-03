@@ -1,8 +1,8 @@
 // Include math library for trigonometric functions.
 #include <math.h>
 
-// We include our own header file so this .c file knows what a 'Player' is.
-// We include resource_manager.h so this .c file knows about the 'environmentModel'.
+// We include our own header file.
+// We also need resource_manager.h so this .c file knows about the 'environmentModel'.
 #include "player.h"
 #include "resource_manager.h"
 
@@ -16,16 +16,17 @@ Player InitPlayer(VehicleType type) {
     Player p = { 0 };
     
     // Set the starting physical properties.
-    p.position = (Vector3){ 0.0f, 5.0f, 0.0f };   // Start 5 unit above the ground
-    p.velocity = (Vector3){ 0.0f, 0.0f, 0.0f };   // Start completely stationary
-    p.throttle = 0.0f;                            // Engine is at 0%
-    p.acceleration = 0.004f;                      // Engine power per frame
-    p.friction = 0.95f;                           // Air resistance/drag (loses 5% of speed per frame)
-    p.type = type;                                // Assign the chosen vehicle model
+    p.position = (Vector3){ 0.0f, 5.0f, 0.0f };   // Start 5 unit above the ground.
+    p.velocity = (Vector3){ 0.0f, 0.0f, 0.0f };   // Start completely stationary.
+    p.throttle = 0.0f;                            // Engine is at 0%.
+    p.acceleration = 0.010f;                      // Engine power per frame.
+    p.friction = 0.95f;                           // Air resistance/drag (loses 5% of speed per frame).
+    p.type = type;                                // Assign the chosen vehicle model.
     
     // Hand the finished package back to whoever called this function.
     return p;
 }
+
 
 // --- UPDATE LOOP ---
 // This function runs 60 times per second to update the vehicle's physics and visual tilt.
@@ -33,7 +34,7 @@ Player InitPlayer(VehicleType type) {
 void UpdatePlayer(Player *player) {
     
     // --- 1. THROTTLE (ENGINE POWER) ---
-    // Instead of moving step-by-step, W and S now control the engine's power.
+    // Instead of moving step-by-step, W and S control the engine's power.
     if (IsKeyDown(KEY_W)) player->throttle -= player->acceleration; 
     if (IsKeyDown(KEY_S)) player->throttle += player->acceleration;
 
@@ -55,22 +56,22 @@ void UpdatePlayer(Player *player) {
 
     // --- 2. STEERING (YAW) & VISUAL TILT (ROLL/PITCH) ---
     // We create temporary variables to store the angle the player WANTS to reach this frame.
-    float targetRoll = 0.0f;  // Roll: Tilting wings left/right
-    float targetPitch = 0.0f; // Pitch: Pointing nose up/down
+    float targetRoll = 0.0f;  // Roll: Tilting wings left/right.
+    float targetPitch = 0.0f; // Pitch: Pointing nose up/down.
 
     // A and D ROTATE the vehicle (Yaw)
     if (IsKeyDown(KEY_A)) {
-        player->rotation.y += 0.02f; // Rotate nose left
-        targetRoll = 0.4f;           // Target tilt left
+        player->rotation.y += 0.02f; // Rotate nose left.
+        targetRoll = 0.4f;           // Target tilt left.
     }
     if (IsKeyDown(KEY_D)) {
-        player->rotation.y -= 0.02f; // Rotate nose right
-        targetRoll = -0.4f;          // Target tilt right
+        player->rotation.y -= 0.02f; // Rotate nose right.
+        targetRoll = -0.4f;          // Target tilt right.
     }
 
 
-    // --- 3. CALCULATE DIRECTION VECTOR (TRIGONOMETRY) ---
-    // We use Sine and Cosine to distribute the engine's power across the X and Z axes
+    // --- 3. CALCULATE VELOCITY DIRECTION VECTOR (TRIGONOMETRY) ---
+    // We use sine and cosine to distribute the engine's power across the X and Z axes
     // based on the direction the vehicle is currently facing (Yaw angle).
     player->velocity.x = player->throttle * sinf(player->rotation.y);
     player->velocity.z = player->throttle * cosf(player->rotation.y);
@@ -78,52 +79,55 @@ void UpdatePlayer(Player *player) {
 
     // --- 4. PHYSICS: GRAVITY & LIFT ---
     // A constant downward force pulling the vehicle to the ground every frame.
-    float gravity = 0.008f;
+    float gravity = 0.015f;
     player->velocity.y -= gravity; 
 
     if (player->type == VEHICLE_PLANE) {
         // --- PLANE PHYSICS ---
-        // Forward speed is now simply the absolute power of the throttle
+        // Forward speed is simply the absolute power of the throttle.
         float forwardSpeed = -player->throttle; 
-        if (forwardSpeed < 0.0f) forwardSpeed = 0.0f; // No lift when reversing
+        if (forwardSpeed < 0.0f) {
+            forwardSpeed = 0.0f; // No lift when reversing.
+        }
 
-        // Generate Lift based on speed to counteract gravity.
-        float lift = forwardSpeed * 0.027f; 
+        // Generate lift based on speed to counteract gravity.
+        float lift = forwardSpeed * 0.030f; 
         player->velocity.y += lift;
 
-        // Pitch up/down only works well if we have forward speed (airflow over the wings)
+        // Pitch up/down only works well if we have forward speed (airflow over the wings).
         if (IsKeyDown(KEY_SPACE)) {
-            player->velocity.y += forwardSpeed * 0.05f; // Use speed to climb
+            player->velocity.y += forwardSpeed * 0.05f; // Use speed to climb.
             targetPitch = 0.3f;                         
         }
         if (IsKeyDown(KEY_LEFT_SHIFT)) {
-            player->velocity.y -= forwardSpeed * 0.05f; // Dive
+            player->velocity.y -= forwardSpeed * 0.05f; // Dive.
             targetPitch = -0.3f;                        
         }
-    } 
+    }
+
     else if (player->type == VEHICLE_HELICOPTER) {
         // --- HELICOPTER PHYSICS ---
-        // Helicopters don't need forward speed to fly, they use raw rotor power
+        // Helicopters don't need forward speed to fly, they use raw rotor power.
         if (IsKeyDown(KEY_SPACE)) {
-            // Rotor thrust must be stronger than gravity to climb
-            player->velocity.y += player->acceleration * 3.0f; 
-            targetPitch = 0.15f; 
+            // Rotor thrust must be stronger than gravity to climb.
+            player->velocity.y += player->acceleration * 3.0f;
+            targetPitch = 0.15f;
         }
         if (IsKeyDown(KEY_LEFT_SHIFT)) {
-            // Reduce collective (drop faster than normal gravity)
+            // Reduce collective (drop faster than normal gravity).
             player->velocity.y -= player->acceleration * 2.0f;
-            targetPitch = -0.15f; 
+            targetPitch = -0.15f;
         }
     }
 
 
     // --- 5. APPLY FRICTION (MOMENTUM DECAY) ---
-    // We ONLY apply friction to the Y axis (vertical). X and Z are engine-driven.
+    // We only apply friction to the Y axis (vertical). X and Z are engine-driven.
     player->velocity.y *= player->friction;
 
 
     // --- 6. ADVANCED COLLISION DETECTION (DUAL RAYCASTING) ---
-    // A) Forward Ray (Crashes) - Detects mountains in front of the aircraft
+    // A) Forward Ray (Crashes): Detects mountains in front of the aircraft.
     Ray forwardRay = { 0 };
     forwardRay.position = player->position;
 
@@ -133,32 +137,33 @@ void UpdatePlayer(Player *player) {
         -cosf(player->rotation.y) * cosf(player->rotation.x) 
     };
 
-    // B) Satellite Ray (Ground detection) - Shoots from 1000 units directly downwards
+    // B) Satellite Ray (Ground detection): Shoots from 1000 units directly downwards.
     Ray downRay = { 0 };
     downRay.position = (Vector3){ player->position.x, 1000.0f, player->position.z };
     downRay.direction = (Vector3){ 0.0f, -1.0f, 0.0f };
 
+    // Crash conditions.
     bool hasCrashed = false;
-    float groundHeight = 0.5f; // Default flat ground fallback
+    float groundHeight = 0.5f; // Default flat ground fallback.
 
     for (int i = 0; i < environmentModel.meshCount; i++) {
-        // Check Forward Crash
+        // Check forward crash.
         RayCollision forwardHit = GetRayCollisionMesh(forwardRay, environmentModel.meshes[i], environmentModel.transform);
         if (forwardHit.hit && forwardHit.distance < 2.0f) {
             hasCrashed = true;
         }
 
-        // Check 3D Floor underneath
+        // Check 3D floor underneath.
         RayCollision groundHit = GetRayCollisionMesh(downRay, environmentModel.meshes[i], environmentModel.transform);
         if (groundHit.hit) {
-            // Keep the highest ground point found (in case meshes overlap)
+            // Keep the highest ground point found (in case meshes overlap).
             if (groundHit.point.y > groundHeight) {
                 groundHeight = groundHit.point.y;
             }
         }
     }
 
-    // Crash logic: Kill the engine and PUSH BACK
+    // Crash logic: Kill the engine and PUSH BACK.
     if (hasCrashed) {
         player->velocity = (Vector3){ 0.0f, 0.0f, 0.0f };
         player->throttle = 0.0f;
@@ -179,44 +184,45 @@ void UpdatePlayer(Player *player) {
 
     // --- 8. SMOOTH INTERPOLATION ---
     // Lerp gradually changes the current rotation towards the target rotation over time.
-    player->rotation.z = Lerp(player->rotation.z, targetRoll, 0.05f);  
-    player->rotation.x = Lerp(player->rotation.x, targetPitch, 0.05f); 
+    player->rotation.x = Lerp(player->rotation.x, targetPitch, 0.05f);
+    player->rotation.z = Lerp(player->rotation.z, targetRoll, 0.05f);
 
 
     // --- 9. DYNAMIC FLOOR COLLISION ---
-    // We now use the actual 3D ground height from our satellite ray!
-    float safeFloor = groundHeight + 0.5f; // +0.5f so the belly rests on the ground
+    // We use the actual 3D ground height from our satellite ray!
+    float safeFloor = groundHeight + 0.5f; // +0.5f so the belly rests on the ground.
 
     if (player->position.y < safeFloor) {
         player->position.y = safeFloor; 
         
-        // Kill downward velocity so it doesn't accumulate while grounded
+        // Kill downward velocity so it doesn't accumulate while grounded.
         if (player->velocity.y < 0.0f) {
             player->velocity.y = 0.0f;
         }
         
-        // When touching the ground, smoothly force the nose back to a level position
+        // When touching the ground, smoothly force the nose back to a level position.
         player->rotation.x = Lerp(player->rotation.x, 0.0f, 0.1f);
     }
 
+
     // --- 10. PARTICLE SYSTEM (TWIN SMOKE TRAILS) ---
     if (player->type != VEHICLE_PLANE) {
-        // If it's not the plane, instantly kill all particles
+        // If it's not the plane, instantly kill all particles.
         for (int i = 0; i < MAX_PARTICLES; i++) {
             player->smoke[i].active = false;
         }
-        player->smokeDelayTimer = 0.0f; // Reset the timer
+        player->smokeDelayTimer = 0.0f; // Reset the timer.
     } else {
-        // If it is the plane, advance the timer
+        // If it is the plane, advance the timer.
         player->smokeDelayTimer += 1.0f;
         
-        // 1. Emit smoke only if accelerating AND 1 second (60 frames) has passed since switching
+        // 1. Emit smoke only if accelerating AND 1 second (60 frames) has passed since switching.
         if (player->throttle < -0.1f && player->smokeDelayTimer > 60.0f) {
             
-            // Calculate the "Right" vector based on where we are looking (Yaw)
+            // Calculate the "Right" vector based on where we are looking (Yaw).
             float rightX =  cosf(player->rotation.y);
             float rightZ = -sinf(player->rotation.y);
-            float engineOffset = 0.35f; // Distance from the center to each engine
+            float engineOffset = 0.35f; // Distance from the center to each engine.
             
             int spawned = 0;
             
@@ -225,8 +231,14 @@ void UpdatePlayer(Player *player) {
                     player->smoke[i].active = true;
                     player->smoke[i].life = 1.0f; 
                     
-                    // If spawned is 0, right engine (1.0). If 1, left engine (-1.0)
-                    float sideDir = (spawned == 0) ? 1.0f : -1.0f; 
+                    // If spawned is 0, right engine (1.0). If 1, left engine (-1.0).
+                    float sideDir;
+                    
+                    if (spawned == 0) {
+                        sideDir = 1.0f;
+                    } else {
+                        sideDir = -1.0f;
+                    }
                     
                     player->smoke[i].position = (Vector3){ 
                         player->position.x + (rightX * engineOffset * sideDir), 
@@ -236,11 +248,11 @@ void UpdatePlayer(Player *player) {
 
                     // Generate a tiny random velocity for horizontal spread (turbulence)
                     player->smoke[i].velocity.x = (float)GetRandomValue(-15, 15) / 1000.0f;
-                    player->smoke[i].velocity.y = 0.02f; // Upward drift
+                    player->smoke[i].velocity.y = 0.02f; // Upward drift.
                     player->smoke[i].velocity.z = (float)GetRandomValue(-15, 15) / 1000.0f;
                     
                     spawned++;
-                    if (spawned >= 2) break; // Exit the loop once both particles have spawned
+                    if (spawned >= 2) break; // Exit the loop once both particles have spawned.
                 }
             }
         }

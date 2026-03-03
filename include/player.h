@@ -5,9 +5,14 @@
 #define PLAYER_H
 
 // Include the main Raylib library so the compiler knows what 'Vector3' is.
-// Include the main Raylib math library for Lerp function.
+// Include the Raylib math library for Lerp function.
 #include "raylib.h"
 #include "raymath.h"
+
+// --- CONSTANTS ---
+// Defining the maximum number of smoke particles on screen here
+// makes it easy to add more later without changing the logic.
+#define MAX_PARTICLES 200
 
 // --- ENUMERATIONS (STATES) ---
 // An 'enum' is a way to assign names to numbers. 
@@ -15,35 +20,41 @@
 // we use clear, readable names. Under the hood, VEHICLE_NONE = 0, 
 // VEHICLE_PLANE = 1, and VEHICLE_HELICOPTER = 2.
 typedef enum VehicleType {
-    VEHICLE_NONE = 0,       // Default state (e.g., when in the main menu)
-    VEHICLE_PLANE,          // Represents the SR-71 Blackbird
-    VEHICLE_HELICOPTER      // Represents the AH-64 Apache
+    VEHICLE_NONE = 0,       // Default state (e.g., when in the main menu).
+    VEHICLE_PLANE,          // Represents the SR-71 Blackbird.
+    VEHICLE_HELICOPTER      // Represents the AH-64 Apache.
 } VehicleType;
 
 
 // --- DATA STRUCTURES ---
 // A 'struct' groups related variables into a single package.
 
-#define MAX_PARTICLES 200 // Maximum number of smoke particles on screen
+// Defines the physical properties, movement, lifespan, and active state 
+// of a single visual smoke entity within the 3D world.
 typedef struct Particle {
-    Vector3 position; // Where the smoke is in the 3D world
-    Vector3 velocity; // Controls the chaotic drift
-    float life;       // How much time it has left before disappearing (1.0f to 0.0f)
+    Vector3 position; // Where the smoke is in the 3D world.
+    Vector3 velocity; // Controls the chaotic drift.
+
+    float life;       // How much time it has left before disappearing (1.0f to 0.0f).
+    
     bool active;      // Is this particle currently being used?
 } Particle;
+
+// A comprehensive container that stores the current state, physics parameters, vehicle type, 
+// and visual effects pool of the user's controlled aircraft.
 typedef struct Player {
-    Vector3 position;              // Current (X, Y, Z) coordinates in the 3D world
-    Vector3 velocity;              // Current speed and direction of movement
-    Vector3 rotation;              // Controls the visual tilt (Pitch, Yaw, Roll)
+    Vector3 position;              // Current (X, Y, Z) coordinates in the 3D world.
+    Vector3 velocity;              // Current speed and direction of movement.
+    Vector3 rotation;              // Controls the visual tilt (Pitch, Yaw, Roll).
 
-    float throttle;                // Engine power (Continuous movement)
-    float acceleration;            // How quickly the vehicle gains speed when a key is pressed
-    float friction;                // Momentum decay multiplier (slows the vehicle down over time)
+    float throttle;                // Engine power (Continuous movement).
+    float acceleration;            // How quickly the vehicle gains speed when a key is pressed.
+    float friction;                // Momentum decay multiplier (slows the vehicle down over time).
 
-    VehicleType type;              // Stores whether the player chose the plane or the helicopter
+    VehicleType type;              // Stores whether the player chose the plane or the helicopter.
 
-    float smokeDelayTimer;         // Timer for vehicle's switching
-    Particle smoke[MAX_PARTICLES]; // Particle pool
+    float smokeDelayTimer;         // Timer for vehicle's switching.
+    Particle smoke[MAX_PARTICLES]; // Particle pool.
 } Player;
 
 

@@ -45,7 +45,7 @@ This project uses the following open-source 3D models from Sketchfab:
 * **SR-71 Blackbird** model by [KOG_THORNS](https://sketchfab.com/ioai25312)
 * **AH-64 Apache** model by [Muhamad Mirza Arrafi](https://sketchfab.com/nazidefenseforceofficial)
 * **Terrain** model by [EntropyNine](https://sketchfab.com/entropy9ine)
-* **Skybox** model by [djvivid](https://sketchfab.com/djvivid)
+* **Skybox** model by [skybox3dArchitect](https://sketchfab.com/skybox3dArchitect)
 * **Ring** model by [FishyBusiness](https://sketchfab.com/FishyBusiness)
 
 Also this project uses the following open-source sounds from Freesound:

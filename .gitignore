@@ -4,20 +4,27 @@
 #     https://www.atlassian.com/git/tutorials/saving-changes/gitignore
 
 # IDE and editor folders
+*.swp
 .vscode/
 .idea/
-*.swp
 
 # Compiled binaries and executables
 *.exe
 *.out
 *.app
+game
 bin/
 build/
 
 # Object files
 *.o
 *.obj
+obj/
+
+# Library types
+*.a
+*.dll
+*.so
 
 # Debugging and logs
 *.log
@@ -27,3 +34,15 @@ build/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Android build artifacts
+*.apk
+*.aab
+local.properties
+.gradle/
+
+# Web build artifacts
+*.wasm
+*.html
+*.js
+*.data

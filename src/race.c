@@ -1,41 +1,47 @@
-// We include our own header file so this .c file knows what a 'RaceSystem' is.
+// Include math library for trigonometric functions.
+#include <math.h>
+
+// We include our own header file.
 // We also need resource_manager.h so this .c file knows what a 'ringModel' is.
 // We also need raymath.h to calculate the 3D distances between the player and the rings.
 #include "race.h"
 #include "resource_manager.h"
 #include "raymath.h"
 
+
 // --- FACTORY FUNCTION ---
 // This function creates a new Race setup from scratch and hands it back to main.c.
 // It acts as the "Track Designer", placing the rings in the 3D world.
 RaceSystem InitRace(void) {
-    // Initialize all memory to 0 to prevent garbage data
+    // We create a local RaceSystem variable and initialize all its memory to 0.
+    // { 0 } is a great C trick to ensure no garbage data is left in memory.
     RaceSystem race = { 0 };
     
+
     // 1. Setup the track layout (Waypoints)
     // We space them out so the player has time to maneuver.
-    // Ring 0: Straight ahead and slightly up
+    // Ring 0: Straight ahead and slightly up.
     race.rings[0].position = (Vector3){ 0.0f, 20.0f, -100.0f };
     race.rings[0].radius = 60.0f;
     race.rings[0].active = true;
 
-    // Ring 1: Further ahead, turning right
+    // Ring 1: Further ahead, turning right.
     race.rings[1].position = (Vector3){ 50.0f, 30.0f, -250.0f };
     race.rings[1].radius = 60.0f;
     race.rings[1].active = true;
 
-    // Ring 2: Dropping altitude
+    // Ring 2: Dropping altitude.
     race.rings[2].position = (Vector3){ 100.0f, 10.0f, -400.0f };
     race.rings[2].radius = 60.0f;
     race.rings[2].active = true;
 
-    // Ring 3: Sharp left turn
+    // Ring 3: Sharp left turn.
     race.rings[3].position = (Vector3){ -50.0f, 40.0f, -500.0f };
     race.rings[3].radius = 60.0f;
-    race.rings[3].yaw = 60.0f; // Rotate 60 degrees to face the incoming player
+    race.rings[3].yaw = 60.0f; // Rotate 60 degrees to face the incoming player.
     race.rings[3].active = true;
 
-    // Ring 4: The Finish Line (Lower and smaller for extra difficulty)
+    // Ring 4: The finish line (Lower and smaller for extra difficulty).
     race.rings[4].position = (Vector3){ -50.0f, 15.0f, -700.0f };
     race.rings[4].radius = 50.0f;
     race.rings[4].active = true;
@@ -52,6 +58,7 @@ RaceSystem InitRace(void) {
     return race;
 }
 
+
 // --- UPDATE LOOP ---
 // This function acts as the Referee. It checks the stopwatch and sees if the 
 // player has crossed the current target ring, or crashed into its physical frame.
@@ -65,14 +72,17 @@ void UpdateRace(RaceSystem *race, Player *player) {
 
     if (!race->isRaceActive) return;
 
-    // 1. UPDATE THE STOPWATCH
+    // --- 1. UPDATE THE STOPWATCH ---
     race->timer += GetFrameTime();
 
-    // 2. OMNIDIRECTIONAL MATH COLLISION (SCORING AND CRASHING)
-    // We loop through ALL active rings to check for physical crashes, 
+
+    // --- 2. OMNIDIRECTIONAL MATH COLLISION (SCORING AND CRASHING) ---
+    // We loop through all active rings to check for physical crashes, 
     // and check the target ring for scoring.
     for (int i = 0; i < MAX_RINGS; i++) {
-        if (!race->rings[i].active) continue;
+        if (!race->rings[i].active) {
+            continue;
+        }
 
         Ring *ring = &race->rings[i];
 
@@ -91,48 +101,52 @@ void UpdateRace(RaceSystem *race, Player *player) {
         float totalDistanceSqr = Vector3LengthSqr(diff);
         float distance2D = sqrtf(fabsf(totalDistanceSqr - (depthDistance * depthDistance)));
 
+
         // --- A) HARD COLLISION (MATHEMATICAL TORUS WITH RADIAL DEFLECTION) ---
         // The core of the tube is located at exactly 'ring->radius' on the 2D plane.
         float radialDiff = distance2D - ring->radius;
         float distanceToTubeCore = sqrtf((radialDiff * radialDiff) + (depthDistance * depthDistance));
         
-        // The visual tube thickness plus a 2.0f buffer
+        // The visual tube thickness plus a 2.0f buffer.
         float tubeThickness = (ring->radius * 0.05f) + 2.0f;
 
         if (distanceToTubeCore < tubeThickness) {
             
-            // 1. Find where the player is relative to the flat plane of the ring
+            // 1. Find where the player is relative to the flat plane of the ring.
             float dot = Vector3DotProduct(diff, ringForward);
             Vector3 planeProjection = Vector3Subtract(diff, Vector3Scale(ringForward, dot));
             
-            // 2. Normalize to get the exact direction from ring center to player on that plane
+            // 2. Normalize to get the exact direction from ring center to player on that plane.
             Vector3 planeDir = Vector3Normalize(planeProjection);
             
-            // 3. Find the exact coordinate of the solid tube's core nearest to the player
+            // 3. Find the exact coordinate of the solid tube's core nearest to the player.
             Vector3 corePoint = Vector3Add(ring->position, Vector3Scale(planeDir, ring->radius));
             
-            // 4. Create a pushback vector pointing strictly OUTWARDS from the solid tube
+            // 4. Create a pushback vector pointing strictly outwards from the solid tube.
             Vector3 pushOutward = Vector3Normalize(Vector3Subtract(player->position, corePoint));
             
-            // 5. DEFLECT THE PLANE! (Slide along the ring instead of a dead stop)
-            // We penalize the speed slightly (lose 20% speed) instead of killing the engine
+            // 5. Deflect the player (Slide along the ring instead of a dead stop).
+            // We penalize the speed slightly (lose 20% speed) instead of killing the engine.
             player->throttle *= 0.8f; 
             
-            // Push the plane radially away from the metal frame
+            // Push the player radially away from the metal frame.
             player->position.x += pushOutward.x * 0.5f;
             player->position.y += pushOutward.y * 0.5f;
             player->position.z += pushOutward.z * 0.5f;
             
-            // Add a slight bounce to the velocity to make the impact feel real
+            // Add a slight bounce to the velocity to make the impact feel real.
             player->velocity.x += pushOutward.x * 0.05f;
             player->velocity.y += pushOutward.y * 0.05f;
             player->velocity.z += pushOutward.z * 0.05f;
         }
+
+
         // --- B) SCORING THE TARGET RING ---
         // We only score points for the current target ring
         if (i == race->targetRing) {
             
-            // We restrict the valid scoring zone to only the inner 65% of the ring
+            // We restrict the valid scoring zone to only the inner 15% of the ring
+            // for visual immersion
             float validHoleRadius = ring->radius * 0.15f;
 
             if (distance2D <= validHoleRadius && depthDistance < 1.0f) {
@@ -148,11 +162,12 @@ void UpdateRace(RaceSystem *race, Player *player) {
     }
 }
 
+
 // --- RENDERING FUNCTION (3D WORLD) ---
-// This must be called INSIDE BeginMode3D() in main.c.
+// This must be called inside BeginMode3D() in main.c.
 void DrawRace3D(RaceSystem *race, Player *player) {
     
-    // 1. Draw all active rings
+    // --- 1. DRAW ALL ACTIVE RINGS ---
     for (int i = 0; i < MAX_RINGS; i++) {
         if (race->rings[i].active) {
             
@@ -160,9 +175,8 @@ void DrawRace3D(RaceSystem *race, Player *player) {
             if (i == race->targetRing) ringColor = GOLD;
             else ringColor = Fade(LIGHTGRAY, 0.3f);
             
-            // --- BUG 2 FIXED: DRAW WITH ROTATION ---
-            // We use DrawModelEx instead of DrawModel to allow individual rotations (yaw).
-            Vector3 rotationAxis = { 0.0f, 1.0f, 0.0f }; // Rotate around the Up (Y) axis
+            // We use DrawModelEx to allow individual rotations (yaw).
+            Vector3 rotationAxis = { 0.0f, 1.0f, 0.0f }; // Rotate around the Up (Y) axis.
             Vector3 scale = { race->rings[i].radius, race->rings[i].radius, race->rings[i].radius };
             
             DrawModelEx(ringModel, race->rings[i].position, rotationAxis, race->rings[i].yaw, scale, ringColor);
@@ -170,11 +184,10 @@ void DrawRace3D(RaceSystem *race, Player *player) {
     }
 
     // --- 2. VECTORIAL HUD ARROW (CHEVRON) ---
-    // Instead of a solid cone that disappears due to perspective, we build a 
-    // high-tech wireframe arrow (----->) using 3D lines and Cross Products.
+    // We build a high-tech wireframe arrow (-->) using 3D lines and cross products.
     if (race->isRaceActive) {
         
-        // 1. Calculate vehicle forward vector to place the hologram near the windshield
+        // 1. Calculate vehicle forward vector to place the hologram near the windshield.
         Vector3 forwardVec = { 
             -sinf(player->rotation.y) * cosf(player->rotation.x), 
              sinf(player->rotation.x), 
@@ -189,37 +202,38 @@ void DrawRace3D(RaceSystem *race, Player *player) {
             player->position.z + (forwardVec.z * 2.0f) 
         };
         
-        // 2. TRUE Target Direction (No perspective cheating!)
+        // 2. True target direction.
         Vector3 targetPos = race->rings[race->targetRing].position;
         Vector3 dir = Vector3Normalize(Vector3Subtract(targetPos, arrowCenter));
         
-        // 3. CROSS PRODUCT MATH
+        // 3. Cross product.
         // To prevent the arrow from becoming a circle, we need it to have horizontal "wings".
-        // The Cross Product of our 'Forward' direction and the 'World Up' axis 
+        // The cross product of our 'Forward' direction and the 'World Up' axis 
         // mathematically generates a perfect 'Left/Right' vector.
         Vector3 worldUp = { 0.0f, 1.0f, 0.0f };
         Vector3 rightDir = Vector3Normalize(Vector3CrossProduct(dir, worldUp));
         
-        // 4. Calculate the 4 points of the Vector Arrow
+        // 4. Calculate the 4 points of the vector arrow.
         Vector3 arrowTail = Vector3Subtract(arrowCenter, Vector3Scale(dir, 0.5f));
         Vector3 arrowTip = Vector3Add(arrowCenter, Vector3Scale(dir, 0.5f));
         
-        // Go back slightly from the tip to attach the wings
+        // Go back slightly from the tip to attach the wings.
         Vector3 headBase = Vector3Subtract(arrowTip, Vector3Scale(dir, 0.4f)); 
         
-        // Extend wings horizontally using our calculated rightDir
+        // Extend wings horizontally using our calculated rightDir.
         Vector3 leftWing = Vector3Add(headBase, Vector3Scale(rightDir, 0.25f));
         Vector3 rightWing = Vector3Subtract(headBase, Vector3Scale(rightDir, 0.25f));
         
-        // 5. Draw the 3 thin cylinders to form the -----> shape
+        // 5. Draw the 3 thin cylinders to form the --> shape
         DrawCylinderEx(arrowTail, arrowTip, 0.03f, 0.03f, 6, RED); // Central shaft
         DrawCylinderEx(leftWing, arrowTip, 0.03f, 0.03f, 6, RED);  // Left wing
         DrawCylinderEx(rightWing, arrowTip, 0.03f, 0.03f, 6, RED); // Right wing
     }
 }
 
+
 // --- RENDERING FUNCTION (2D HUD) ---
-// This must be called OUTSIDE BeginMode3D() in main.c, right next to your telemetry.
+// This must be called outside BeginMode3D() in main.c, right next to your telemetry.
 void DrawRaceUI(RaceSystem *race) {
     
     // Get current screen dimensions dynamically
@@ -228,17 +242,18 @@ void DrawRaceUI(RaceSystem *race) {
     
     if (race->isRaceActive) {
         
-        // 1. Draw the Stopwatch at 5% from the top
+        // 1. Draw the stopwatch at 8% from the top
         const char *timerText = TextFormat("RACE TIME: %.2f", race->timer);
         int timerWidth = MeasureText(timerText, 30);
         DrawText(timerText, (screenWidth - timerWidth) / 2, screenHeight * 0.08f, 30, WHITE);
 
-        // 2. Draw progress at 10% from the top
+        // 2. Draw progress at 13% from the top
         const char *ringText = TextFormat("TARGET RING: %d / %d", race->targetRing + 1, MAX_RINGS);
         int ringWidth = MeasureText(ringText, 20);
         DrawText(ringText, (screenWidth - ringWidth) / 2, screenHeight * 0.13f, 20, GOLD);
         
-    } 
+    }
+    
     // Only draw the victory message if less than 5 seconds have passed
     else if (race->isFinished && race->finishedTimer < 5.0f) {
         
