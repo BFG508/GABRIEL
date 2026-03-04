@@ -8,16 +8,25 @@ A basic but dynamic 3D flight simulator written purely in C. This project was cr
 * **Continuous Throttle Physics:** Smooth acceleration, lift generation, and momentum decay (friction) custom-built for both fixed-wing aircraft and helicopters.
 * **Dynamic Visual Tilt & Steering:** The aircraft yaw, rolls, and pitches realistically based on user input and aerospace matrix multiplication.
 * **Advanced Collision Detection:** Dual raycasting system to detect mountains directly ahead and precisely calculate 3D ground height beneath the vehicle.
+* **Adaptive 4:3 Resolution:** Auto-scaling window that detects monitor size to maximize screen real estate while maintaining a retro simulator aspect ratio.
+* **Full Gamepad & Steam Deck Support:** Plug-and-play Xbox controller integration with analog precision and real-time dynamic UI text swapping.
 * **State Machine:** Clean architectural separation between the Main Menu and the active Game Loop.
 
 ## 🛠️ Technology Stack
 This project uses **Raylib**, a highly modular and simple-to-use library to enjoy videogames programming in pure C without the overhead of massive game engines.
 
 ## 🎮 Controls
-* **W / S:** Throttle Up / Down (Engine Power)
-* **A / D:** Yaw Left / Right (Steers the nose, induces roll)
-* **SPACE / SHIFT:** Pitch Up / Down (Climb or Dive)
-* **1 / 2 / C / H:** Easter Eggs
+| Action | Keyboard | Gamepad (Xbox / Steam Deck) |
+| :--- | :--- | :--- |
+| **Throttle (Engine Power)** | W / S | LT / RT (Analog Triggers) |
+| **Steer (Yaw / Roll)** | A / D | Left Stick (X-Axis) |
+| **Pitch (Climb / Dive)** | SPACE / SHIFT | Left Stick (Y-Axis) |
+| **Select Plane** | 1 | X Button |
+| **Select Helicopter** | 2 | Y Button |
+| **Toggle Camera (1st/3rd Person)** | C | A Button |
+| **Toggle UI Controls** | H | Menu / Start Button |
+| **Quick Restart** | R | B Button |
+| **Exit Game** | ESC | View / Back Button |
 
 ## ⚙️ Prerequisites & Compilation
 This project uses a universal `Makefile`. You must have **Raylib** installed on your system to compile it.

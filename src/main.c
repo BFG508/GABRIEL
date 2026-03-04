@@ -84,6 +84,12 @@ int main(void) {
     // This loop runs 60 times per second until the user clicks the X or presses ESC.
     while (!WindowShouldClose()) {
         
+        // Exit with gamepad.
+        // If the left middle button (View/Back) is pressed, break the loop to close the game.
+        if (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_LEFT)) {
+            break;
+        }
+
         // --- A) UPDATE PHASE (LOGIC & MATH) ---
         // Here we process input and move things, but we do not draw anything yet.
         if (currentState == STATE_MENU) {
@@ -96,26 +102,27 @@ int main(void) {
                 PlayMusicStream(menuMusic);
             }
             
-            // If we are in the menu, wait for the user to press 1 or 2.
-            if (IsKeyPressed(KEY_ONE)) {
-                StopMusicStream(menuMusic);              // Stop the chill music!
-                player = InitPlayer(VEHICLE_PLANE);      // Initialize as a plane.
-                currentState = STATE_PLAYING;            // Change the state to start the game!
-            } else if (IsKeyPressed(KEY_TWO)) {
-                StopMusicStream(menuMusic);              // Stop the chill music!
-                player = InitPlayer(VEHICLE_HELICOPTER); // Initialize as a helicopter.
-                currentState = STATE_PLAYING;            // Change the state to start the game!
+            // Wait for the user to press 1 (Keyboard) or X (Gamepad) to select the Plane
+            if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
+                StopMusicStream(menuMusic);         
+                player = InitPlayer(VEHICLE_PLANE); 
+                currentState = STATE_PLAYING;       
+            } 
+            // Wait for the user to press 2 (Keyboard) or Y (Gamepad) to select the Helicopter
+            else if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
+                StopMusicStream(menuMusic);              
+                player = InitPlayer(VEHICLE_HELICOPTER); 
+                currentState = STATE_PLAYING;            
             }
-            
         } else if (currentState == STATE_PLAYING) {
             
             // Mid-flight vehicle switching
-            if (IsKeyPressed(KEY_ONE)) player.type = VEHICLE_PLANE;
-            if (IsKeyPressed(KEY_TWO)) player.type = VEHICLE_HELICOPTER;
+            if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) player.type = VEHICLE_PLANE;
+            if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) player.type = VEHICLE_HELICOPTER;
 
             // Quick restart.
             // If the player makes a mistake, press R to restart the race instantly.
-            if (IsKeyPressed(KEY_R)) {
+            if (IsKeyPressed(KEY_R) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) {
                 race = InitRace();                // Resets all rings and stopwatch.
                 player = InitPlayer(player.type); // Teleports player back to origin.
             }
@@ -163,8 +170,8 @@ int main(void) {
             }
             
             // Dynamic logic camera
-            // Toggle camera mode when pressing 'C'.
-            if (IsKeyPressed(KEY_C)) isFirstPerson = !isFirstPerson;
+            // Toggle camera mode when pressing 'C' (Keyboard) or 'A' (Gamepad)
+            if (IsKeyPressed(KEY_C) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) isFirstPerson = !isFirstPerson;
 
             if (isFirstPerson) {
                 // 1st PERSON (Cockpit).
@@ -188,8 +195,8 @@ int main(void) {
                 camera.position.z = player.position.z + (cosf(player.rotation.y) * cameraDistance);
             }
             
-            // Toggle controls visibility when pressing 'H'.
-            if (IsKeyPressed(KEY_H)) showControls = !showControls;
+            // Toggle controls visibility when pressing 'H' (Keyboard) or 'Menu/Start' (Gamepad)
+            if (IsKeyPressed(KEY_H) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) showControls = !showControls;
         }
 
 
@@ -216,11 +223,21 @@ int main(void) {
             int authorWidth = MeasureText(author, 35); 
             DrawText(author, (screenWidth - authorWidth) / 2, screenHeight * 0.33f, 35, WHITE);
             
-            const char *opt1 = "Press [1] to fly the SR-71 Blackbird";
+            // NEW: DYNAMIC MENU TEXT BASED ON GAMEPAD CONNECTION
+            const char *opt1;
+            const char *opt2;
+
+            if (IsGamepadAvailable(0)) {
+                opt1 = "Press [X] to fly the SR-71 Blackbird";
+                opt2 = "Press [Y] to fly the AH-64 Apache";
+            } else {
+                opt1 = "Press [1] to fly the SR-71 Blackbird";
+                opt2 = "Press [2] to fly the AH-64 Apache";
+            }
+
             int opt1Width = MeasureText(opt1, 25); 
             DrawText(opt1, (screenWidth - opt1Width) / 2, screenHeight * 0.45f, 25, DARKGRAY);
             
-            const char *opt2 = "Press [2] to fly the AH-64 Apache";
             int opt2Width = MeasureText(opt2, 25);
             DrawText(opt2, (screenWidth - opt2Width) / 2, screenHeight * 0.52f, 25, DARKGRAY);
             
@@ -293,9 +310,17 @@ int main(void) {
 
             // UI controls (Toggleable)
             if (showControls) {
-                DrawText("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 20, 20, 20, DARKGRAY);
+                if (IsGamepadAvailable(0)) {
+                    DrawText("LT/RT: Throttle | Stick: Move", 20, 20, 20, DARKGRAY);
+                } else {
+                    DrawText("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 20, 20, 20, DARKGRAY);
+                }
             } else {
-                DrawText("Press [H] to show controls", 20, 20, 10, GRAY);
+                if (IsGamepadAvailable(0)) {
+                    DrawText("Press [Menu] to show controls", 20, 20, 10, GRAY);
+                } else {
+                    DrawText("Press [H] to show controls", 20, 20, 10, GRAY);
+                }
             }
 
             // Draw the race stopwatch and remaining rings on the screen (Centered).

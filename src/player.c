@@ -34,9 +34,15 @@ Player InitPlayer(VehicleType type) {
 void UpdatePlayer(Player *player) {
     
     // --- 1. THROTTLE (ENGINE POWER) ---
-    // Instead of moving step-by-step, W and S control the engine's power.
+    // Keyboard inputs
     if (IsKeyDown(KEY_W)) player->throttle -= player->acceleration; 
     if (IsKeyDown(KEY_S)) player->throttle += player->acceleration;
+
+    // Gamepad inputs (RT to accelerate, LT to brake/reverse)
+    if (IsGamepadAvailable(0)) {
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_TRIGGER_2)) player->throttle -= player->acceleration;
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_TRIGGER_2))  player->throttle += player->acceleration;
+    }
 
     // Limit the throttle based on the vehicle type so it doesn't accelerate to infinity.
     if (player->type == VEHICLE_PLANE) {
@@ -59,7 +65,7 @@ void UpdatePlayer(Player *player) {
     float targetRoll = 0.0f;  // Roll: Tilting wings left/right.
     float targetPitch = 0.0f; // Pitch: Pointing nose up/down.
 
-    // A and D ROTATE the vehicle (Yaw)
+    // Keyboard Yaw (A/D)
     if (IsKeyDown(KEY_A)) {
         player->rotation.y += 0.02f; // Rotate nose left.
         targetRoll = 0.4f;           // Target tilt left.
@@ -67,6 +73,17 @@ void UpdatePlayer(Player *player) {
     if (IsKeyDown(KEY_D)) {
         player->rotation.y -= 0.02f; // Rotate nose right.
         targetRoll = -0.4f;          // Target tilt right.
+    }
+
+    // Gamepad Yaw/Roll (Left Stick X-Axis)
+    if (IsGamepadAvailable(0)) {
+        float leftX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
+        
+        // Deadzone check: We ignore inputs smaller than 0.15f to prevent stick drift
+        if (fabsf(leftX) > 0.15f) {
+            player->rotation.y -= leftX * 0.02f; 
+            targetRoll = -leftX * 0.4f;          
+        }
     }
 
 
@@ -95,6 +112,7 @@ void UpdatePlayer(Player *player) {
         player->velocity.y += lift;
 
         // Pitch up/down only works well if we have forward speed (airflow over the wings).
+        // Keyboard Pitch
         if (IsKeyDown(KEY_SPACE)) {
             player->velocity.y += forwardSpeed * 0.05f; // Use speed to climb.
             targetPitch = 0.3f;                         
@@ -102,6 +120,16 @@ void UpdatePlayer(Player *player) {
         if (IsKeyDown(KEY_LEFT_SHIFT)) {
             player->velocity.y -= forwardSpeed * 0.05f; // Dive.
             targetPitch = -0.3f;                        
+        }
+
+        // Gamepad Pitch (Left Stick Y-Axis)
+        // In aviation: Pulling stick BACK (positive Y) raises the nose. 
+        if (IsGamepadAvailable(0)) {
+            float leftY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
+            if (fabsf(leftY) > 0.15f) {
+                player->velocity.y += forwardSpeed * 0.05f * leftY;
+                targetPitch = 0.3f * leftY;
+            }
         }
     }
 
@@ -117,6 +145,15 @@ void UpdatePlayer(Player *player) {
             // Reduce collective (drop faster than normal gravity).
             player->velocity.y -= player->acceleration * 2.0f;
             targetPitch = -0.15f;
+        }
+
+        // Gamepad Pitch (Left Stick Y-Axis)
+        if (IsGamepadAvailable(0)) {
+            float leftY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
+            if (fabsf(leftY) > 0.15f) {
+                player->velocity.y += player->acceleration * 3.0f * leftY;
+                targetPitch = 0.15f * leftY;
+            }
         }
     }
 
