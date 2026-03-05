@@ -33,6 +33,13 @@ Player InitPlayer(VehicleType type) {
 // We pass a POINTER (*player) so we edit the actual player in main.c, not a local copy.
 void UpdatePlayer(Player *player) {
     
+    // --- 0. DELTA TIME (TIME SCALE) ---
+    // GetFrameTime() tells us the real time passed since last frame.
+    // By multiplying it by 60.0f, we get a scale factor.
+    // At 60 FPS, dtScale = 1.0f (Normal speed)
+    // At 30 FPS, dtScale = 2.0f (Moves twice as far per frame to compensate)
+    float dtScale = GetFrameTime() * 60.0f;
+
     // --- 1. THROTTLE (ENGINE POWER) ---
     // Keyboard inputs
     if (IsKeyDown(KEY_W)) player->throttle -= player->acceleration; 
@@ -67,12 +74,12 @@ void UpdatePlayer(Player *player) {
 
     // Keyboard Yaw (A/D)
     if (IsKeyDown(KEY_A)) {
-        player->rotation.y += 0.02f; // Rotate nose left.
-        targetRoll = 0.4f;           // Target tilt left.
+        player->rotation.y += 0.02f * dtScale; // Rotate nose left.
+        targetRoll = 0.4f;                     // Target tilt left.
     }
     if (IsKeyDown(KEY_D)) {
-        player->rotation.y -= 0.02f; // Rotate nose right.
-        targetRoll = -0.4f;          // Target tilt right.
+        player->rotation.y -= 0.02f * dtScale; // Rotate nose right.
+        targetRoll = -0.4f;                    // Target tilt right.
     }
 
     // Gamepad Yaw/Roll (Left Stick X-Axis)
@@ -81,7 +88,7 @@ void UpdatePlayer(Player *player) {
         
         // Deadzone check: We ignore inputs smaller than 0.15f to prevent stick drift
         if (fabsf(leftX) > 0.15f) {
-            player->rotation.y -= leftX * 0.02f; 
+            player->rotation.y -= leftX * 0.02f * dtScale; 
             targetRoll = -leftX * 0.4f;          
         }
     }
@@ -181,7 +188,10 @@ void UpdatePlayer(Player *player) {
 
     // Crash conditions.
     bool hasCrashed = false;
-    float groundHeight = 0.5f; // Default flat ground fallback.
+    
+    // MODIFIED: We set the fallback to absolute zero (0.0f) instead of 0.5f
+    // so the mathematical floor is exactly at Y = 0.
+    float groundHeight = 0.0f; 
 
     for (int i = 0; i < environmentModel.meshCount; i++) {
         // Check forward crash.
@@ -214,9 +224,9 @@ void UpdatePlayer(Player *player) {
 
     // --- 7. UPDATE POSITION ---
     // Update the actual coordinates in the 3D world based on current velocity.
-    player->position.x += player->velocity.x;
-    player->position.y += player->velocity.y;
-    player->position.z += player->velocity.z;
+    player->position.x += player->velocity.x * dtScale;
+    player->position.y += player->velocity.y * dtScale;
+    player->position.z += player->velocity.z * dtScale;
 
 
     // --- 8. SMOOTH INTERPOLATION ---
@@ -229,7 +239,7 @@ void UpdatePlayer(Player *player) {
     // We use the actual 3D ground height from our satellite ray!
     float safeFloor = groundHeight + 0.5f; // +0.5f so the belly rests on the ground.
 
-    if (player->position.y < safeFloor) {
+    if (player->position.y <= safeFloor) {
         player->position.y = safeFloor; 
         
         // Kill downward velocity so it doesn't accumulate while grounded.
@@ -239,8 +249,14 @@ void UpdatePlayer(Player *player) {
         
         // When touching the ground, smoothly force the nose back to a level position.
         player->rotation.x = Lerp(player->rotation.x, 0.0f, 0.1f);
+        
+        // --- ADDED: ZERO-FLOOR THROTTLE KILL ---
+        // If the player touches the absolute bottom (Y = 0, which means safeFloor is 0.5f)
+        // or if they fly off the map where no mesh exists, we kill the engine.
+        if (player->position.y <= 0.5f) {
+            player->throttle = 0.0f;
+        }
     }
-
 
     // --- 10. PARTICLE SYSTEM (TWIN SMOKE TRAILS) ---
     if (player->type != VEHICLE_PLANE) {
@@ -251,7 +267,7 @@ void UpdatePlayer(Player *player) {
         player->smokeDelayTimer = 0.0f; // Reset the timer.
     } else {
         // If it is the plane, advance the timer.
-        player->smokeDelayTimer += 1.0f;
+        player->smokeDelayTimer += 1.0f  * dtScale;
         
         // 1. Emit smoke only if accelerating AND 1 second (60 frames) has passed since switching.
         if (player->throttle < -0.1f && player->smokeDelayTimer > 60.0f) {
@@ -302,9 +318,9 @@ void UpdatePlayer(Player *player) {
             player->smoke[i].position.y += 0.02f;
 
             // Apply physical drift
-            player->smoke[i].position.x += player->smoke[i].velocity.x;
-            player->smoke[i].position.y += player->smoke[i].velocity.y;
-            player->smoke[i].position.z += player->smoke[i].velocity.z;
+            player->smoke[i].position.x += player->smoke[i].velocity.x * dtScale;
+            player->smoke[i].position.y += player->smoke[i].velocity.y * dtScale;
+            player->smoke[i].position.z += player->smoke[i].velocity.z * dtScale;
             
             if (player->smoke[i].life <= 0.0f) {
                 player->smoke[i].active = false;

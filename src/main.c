@@ -9,6 +9,7 @@
 #include "player.h"
 #include "resource_manager.h"
 #include "race.h"
+#include "leaderboard.h"
 
 
 // --- GAME STATES (STATE MACHINE) ---
@@ -17,7 +18,9 @@
 // from moving the plane while they are still in the main menu.
 typedef enum GameState {
     STATE_MENU,
-    STATE_PLAYING
+    STATE_PLAYING,
+    STATE_NAME_INPUT,
+    STATE_LEADERBOARD
 } GameState;
 
 
@@ -79,6 +82,13 @@ int main(void) {
     // Initialize the Race System (The track and the referee).
     RaceSystem race = InitRace();
 
+    // Load existing records from the hard drive into RAM.
+    Leaderboard leaderboard = LoadLeaderboard("data/times.txt");
+    
+    // Variables to handle the keyboard input for the player's name.
+    char playerName[MAX_NAME_LENGTH + 1] = "\0"; // Empty string to start.
+    int letterCount = 0;                         // Tracks how many letters have been typed.
+
 
     // --- 2. THE MAIN GAME LOOP ---
     // This loop runs 60 times per second until the user clicks the X or presses ESC.
@@ -106,16 +116,18 @@ int main(void) {
             if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
                 StopMusicStream(menuMusic);         
                 player = InitPlayer(VEHICLE_PLANE); 
+                race = InitRace();
                 currentState = STATE_PLAYING;       
             } 
             // Wait for the user to press 2 (Keyboard) or Y (Gamepad) to select the Helicopter
             else if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
                 StopMusicStream(menuMusic);              
-                player = InitPlayer(VEHICLE_HELICOPTER); 
+                player = InitPlayer(VEHICLE_HELICOPTER);
+                race = InitRace();
                 currentState = STATE_PLAYING;            
             }
         } else if (currentState == STATE_PLAYING) {
-            
+
             // Mid-flight vehicle switching
             if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) player.type = VEHICLE_PLANE;
             if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) player.type = VEHICLE_HELICOPTER;
@@ -174,7 +186,7 @@ int main(void) {
             if (IsKeyPressed(KEY_C) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) isFirstPerson = !isFirstPerson;
 
             if (isFirstPerson) {
-                // 1st PERSON (Cockpit).
+                // 1st person (Cockpit).
                 // Place camera exactly at player's position, slightly elevated for eye level
                 camera.position = (Vector3){ player.position.x, player.position.y + 0.5f, player.position.z };
                 
@@ -185,7 +197,7 @@ int main(void) {
                 camera.target.z = camera.position.z - (cosf(player.rotation.y) * cosf(player.rotation.x));
                 
             } else {
-                // 3rd PERSON (Chase).
+                // 3rd person (Chase).
                 camera.target = player.position;
                 float cameraDistance = 4.0f;
                 float cameraHeight = 1.5f; 
@@ -194,9 +206,62 @@ int main(void) {
                 camera.position.y = player.position.y + cameraHeight;
                 camera.position.z = player.position.z + (cosf(player.rotation.y) * cameraDistance);
             }
+
+            // Check if the race is over and the 5-second victory screen has passed.
+            if (race.isFinished && race.finishedTimer > 5.0f) {
+                currentState = STATE_NAME_INPUT;
+                
+                StopSound(planeSound);
+                StopSound(helicopterSound);
+
+                // Reset the typing variables for a fresh start.
+                playerName[0] = '\0';
+                letterCount = 0;
+            }
             
-            // Toggle controls visibility when pressing 'H' (Keyboard) or 'Menu/Start' (Gamepad)
+            // Toggle controls visibility when pressing 'H' (Keyboard) or 'Menu/Start' (Gamepad).
             if (IsKeyPressed(KEY_H) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) showControls = !showControls;
+        
+        } else if (currentState == STATE_NAME_INPUT) {
+            
+            // --- TEXT INPUT LOGIC ---
+            // GetCharPressed() reads the keyboard queue character by character.
+            int key = GetCharPressed();
+            
+            // While there are keys in the queue, process them.
+            while (key > 0) {
+                // Only allow standard printable characters (ASCII 32 to 125) and respect the limit.
+                if ((key >= 32) && (key <= 125) && (letterCount < MAX_NAME_LENGTH)) {
+                    playerName[letterCount] = (char)key;
+                    playerName[letterCount + 1] = '\0'; // Always keep the string null-terminated.
+                    letterCount++;
+                }
+                key = GetCharPressed(); // Check if there's another key pressed very quickly.
+            }
+            
+            // Handle BACKSPACE to delete characters.
+            if (IsKeyPressed(KEY_BACKSPACE)) {
+                letterCount--;
+                if (letterCount < 0) letterCount = 0;
+                playerName[letterCount] = '\0';
+            }
+            
+            // Handle ENTER to submit the name.
+            if (IsKeyPressed(KEY_ENTER) && letterCount > 0) {
+                // 1. Add the new champion to the RAM array.
+                AddLeaderboardEntry(&leaderboard, playerName, race.timer, player.type);
+                // 2. Save the RAM array to the Hard Drive.
+                SaveLeaderboard(&leaderboard, "data/times.txt");
+                // 3. Move to the Leaderboard screen.
+                currentState = STATE_LEADERBOARD;
+            }
+            
+        } else if (currentState == STATE_LEADERBOARD) {
+            
+            // Wait strictly for ENTER (Keyboard) or 'B' (Gamepad) to return to the main menu.
+            if (IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) {
+                currentState = STATE_MENU;
+            }
         }
 
 
@@ -250,12 +315,39 @@ int main(void) {
                 // This creates the optical illusion that the sky is infinitely far away.
                 DrawModel(skyboxModel, camera.position, 3.0f, WHITE);
 
-                // Draw terrain.
-                DrawModel(environmentModel, (Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
+                // Infinite green grid.
+                // Draw a massive solid dark green plane to hide the skybox below.
+                // We place it exactly at Y = 0.0f. 
+                // The size is 5000x5000 units, which covers the entire visible horizon.
+                DrawPlane((Vector3){ player.position.x, 0.0f, player.position.z }, (Vector2){ 5000.0f, 5000.0f }, DARKGREEN);
+
+                // Draw the grid lines slightly above the plane (Y = 0.05f).
+                // If we draw them at exactly 0.0f, they will overlap with the solid plane 
+                // and cause a graphical glitch called "Z-fighting" (flickering).
+                float spacing = 50.0f; // Distance between each line in the grid.
+                int slices = 60;       // How many lines we draw in each direction.
+
+                // We find the nearest grid "intersection" to the player.
+                // By snapping the grid to the player's position, we create the optical illusion
+                // that the floor is infinite and smoothly follows the camera.
+                float snapX = (int)(player.position.x / spacing) * spacing;
+                float snapZ = (int)(player.position.z / spacing) * spacing;
+
+                for (int i = -slices; i <= slices; i++) {
+                    float offset = i * spacing;
+                    float extent = slices * spacing;
+                    
+                    // Draw lines along the Z axis (Forward/Backward)
+                    DrawLine3D((Vector3){ snapX + offset, 0.05f, snapZ - extent },
+                               (Vector3){ snapX + offset, 0.05f, snapZ + extent }, LIME);
+                               
+                    // Draw lines along the X axis (Left/Right)
+                    DrawLine3D((Vector3){ snapX - extent, 0.05f, snapZ + offset },
+                               (Vector3){ snapX + extent, 0.05f, snapZ + offset }, LIME);
+                }
 
                 // Draw the floating 3D rings and the navigation arrow for the race.
                 DrawRace3D(&race, &player);
-
 
                 // Decide which model to use.
                 Model *currentModel;
@@ -339,6 +431,82 @@ int main(void) {
             int powerPercentage = (int)((-player.throttle / maxThrottle) * 100.0f);
             
             DrawText(TextFormat("POWER: %d %%", powerPercentage), 20, screenHeight - 60, 20, LIME);
+
+        }  else if (currentState == STATE_NAME_INPUT) {
+            
+            // Name Input Screen
+            const char *title = "NEW FLIGHT RECORD!";
+            int titleWidth = MeasureText(title, 40);
+            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.2f, 40, GOLD);
+            
+            const char *prompt = "ENTER YOUR CALLSIGN, PILOT:";
+            int promptWidth = MeasureText(prompt, 30);
+            DrawText(prompt, (screenWidth - promptWidth) / 2, screenHeight * 0.4f, 30, WHITE);
+            
+            // Draw the actual name being typed inside a classic console-style bracket
+            const char *nameDisplay = TextFormat("[ %s_ ]", playerName);
+            int nameWidth = MeasureText(nameDisplay, 40);
+            DrawText(nameDisplay, (screenWidth - nameWidth) / 2, screenHeight * 0.5f, 40, LIME);
+            
+            // Blinking instructions
+            if ((int)(GetTime() * 2) % 2 == 0) {
+                const char *instruction = "PRESS ENTER TO CONFIRM";
+                int instWidth = MeasureText(instruction, 20);
+                DrawText(instruction, (screenWidth - instWidth) / 2, screenHeight * 0.7f, 20, GRAY);
+            }
+            
+        } else if (currentState == STATE_LEADERBOARD) {
+            
+            // Leaderboard Screen
+            ClearBackground(DARKBLUE); // A different background to make it feel like a computer terminal
+            
+            const char *title = "--- TOP 10 PILOTS ---";
+            int titleWidth = MeasureText(title, 40);
+            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.1f, 40, GOLD);
+            
+            // Loop through the records and print them list-style
+            int startY = screenHeight * 0.25f;
+            int spacing = 35;
+            
+// Headers for the columns
+            DrawText("PILOT", screenWidth * 0.2f, startY - 40, 20, GRAY);
+            DrawText("TIME", screenWidth * 0.5f, startY - 40, 20, GRAY);
+            DrawText("VEHICLE", screenWidth * 0.75f, startY - 40, 20, GRAY);
+
+            for (int i = 0; i < leaderboard.count; i++) {
+                
+                // Format the strings
+                const char *recordStr = TextFormat("%d. %s", i + 1, leaderboard.entries[i].name);
+                const char *timeStr = TextFormat("%.2f s", leaderboard.entries[i].time);
+                
+                // Determine the vehicle name
+                const char *vehStr = "Unknown";
+                if (leaderboard.entries[i].vehicle == VEHICLE_PLANE) {
+                    vehStr = "Airplane";
+                } else if (leaderboard.entries[i].vehicle == VEHICLE_HELICOPTER) {
+                    vehStr = "Helicopter";
+                }
+                
+                // Draw Name (Left column)
+                DrawText(recordStr, screenWidth * 0.2f, startY + (i * spacing), 30, WHITE);
+                
+                // Draw Time (Center column)
+                DrawText(timeStr, screenWidth * 0.5f, startY + (i * spacing), 30, LIME);
+
+                // Draw Vehicle (Right column)
+                DrawText(vehStr, screenWidth * 0.75f, startY + (i * spacing), 30, SKYBLUE);
+            }
+            
+            // Dynamic instructions to exit based on connected hardware
+            const char *exitText;
+            if (IsGamepadAvailable(0)) {
+                exitText = "PRESS [B] TO RETURN TO BASE";
+            } else {
+                exitText = "PRESS [ENTER] TO RETURN TO BASE";
+            }
+            
+            int exitWidth = MeasureText(exitText, 20);
+            DrawText(exitText, (screenWidth - exitWidth) / 2, screenHeight * 0.9f, 20, GRAY);
         }
 
         EndDrawing(); // Tell Raylib we are done painting this frame, display it!

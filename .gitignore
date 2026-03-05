@@ -35,6 +35,9 @@ obj/
 .DS_Store
 Thumbs.db
 
+# Files generated from the game
+.data/
+
 # Android build artifacts
 *.apk
 *.aab

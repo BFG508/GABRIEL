@@ -51,11 +51,11 @@ void LoadGameResources(void) {
     SetSoundVolume(planeSound, 1.30f);
 
     helicopterSound = LoadSound("resources/sounds/helicopter.wav");
-    SetSoundVolume(helicopterSound, 0.60f);
+    SetSoundVolume(helicopterSound, 0.50f);
 
 
     menuMusic = LoadMusicStream("resources/sounds/menu.mp3");
-    SetMusicVolume(menuMusic, 0.65f);
+    SetMusicVolume(menuMusic, 0.55f);
 }
 
 // --- UNLOAD FUNCTION ---
