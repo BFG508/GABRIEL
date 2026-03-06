@@ -51,7 +51,7 @@ void SaveLeaderboard(Leaderboard *lb, const char *filename);
 
 // Evaluates a new time, finds its proper sorted position (lowest to highest), 
 // shifts the slower times down, and inserts the new record.
-// VERY IMPORTANT: We pass a POINTER (*lb) because we need to modify the actual leaderboard array.
+// We pass a POINTER (*lb) because we need to modify the actual leaderboard array.
 void AddLeaderboardEntry(Leaderboard *lb, const char *name, float time, VehicleType vehicle);
 
 #endif // Ends the include guard

@@ -1,4 +1,4 @@
-// Include math library for trigonometric functions.
+// Include math library to use advanced mathematical functions.
 #include <math.h>
 
 // We include our own header file.
@@ -10,18 +10,19 @@
 // --- FACTORY FUNCTION ---
 // This function creates a new Player from scratch and hands it back to main.c.
 // It returns a full copy of the 'Player' struct.
-Player InitPlayer(VehicleType type) {
+Player InitPlayer(VehicleType type, Vector3 startPos, float startYaw) {
     // We create a local Player variable and initialize all its memory to 0.
     // { 0 } is a great C trick to ensure no garbage data is left in memory.
     Player p = { 0 };
     
     // Set the starting physical properties.
-    p.position = (Vector3){ 0.0f, 5.0f, 0.0f };   // Start 5 unit above the ground.
-    p.velocity = (Vector3){ 0.0f, 0.0f, 0.0f };   // Start completely stationary.
-    p.throttle = 0.0f;                            // Engine is at 0%.
-    p.acceleration = 0.010f;                      // Engine power per frame.
-    p.friction = 0.95f;                           // Air resistance/drag (loses 5% of speed per frame).
-    p.type = type;                                // Assign the chosen vehicle model.
+    p.position = startPos;
+    p.rotation = (Vector3){ 0.0f, startYaw, 0.0f }; // Set initial yaw
+    p.velocity = (Vector3){ 0.0f, 0.0f, 0.0f };     // Start completely stationary.
+    p.throttle = 0.0f;                              // Engine is at 0%.
+    p.acceleration = 0.010f;                        // Engine power per frame.
+    p.friction = 0.95f;                             // Air resistance/drag (loses 5% of speed per frame).
+    p.type = type;                                  // Assign the chosen vehicle model.
     
     // Hand the finished package back to whoever called this function.
     return p;
@@ -36,16 +37,14 @@ void UpdatePlayer(Player *player) {
     // --- 0. DELTA TIME (TIME SCALE) ---
     // GetFrameTime() tells us the real time passed since last frame.
     // By multiplying it by 60.0f, we get a scale factor.
-    // At 60 FPS, dtScale = 1.0f (Normal speed)
-    // At 30 FPS, dtScale = 2.0f (Moves twice as far per frame to compensate)
     float dtScale = GetFrameTime() * 60.0f;
 
     // --- 1. THROTTLE (ENGINE POWER) ---
-    // Keyboard inputs
+    // Keyboard inputs.
     if (IsKeyDown(KEY_W)) player->throttle -= player->acceleration; 
     if (IsKeyDown(KEY_S)) player->throttle += player->acceleration;
 
-    // Gamepad inputs (RT to accelerate, LT to brake/reverse)
+    // Gamepad inputs (RT to accelerate, LT to brake/reverse).
     if (IsGamepadAvailable(0)) {
         if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_TRIGGER_2)) player->throttle -= player->acceleration;
         if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_TRIGGER_2))  player->throttle += player->acceleration;
@@ -68,7 +67,7 @@ void UpdatePlayer(Player *player) {
 
 
     // --- 2. STEERING (YAW) & VISUAL TILT (ROLL/PITCH) ---
-    // We create temporary variables to store the angle the player WANTS to reach this frame.
+    // We create temporary variables to store the angle the player wants to reach this frame.
     float targetRoll = 0.0f;  // Roll: Tilting wings left/right.
     float targetPitch = 0.0f; // Pitch: Pointing nose up/down.
 
@@ -82,11 +81,11 @@ void UpdatePlayer(Player *player) {
         targetRoll = -0.4f;                    // Target tilt right.
     }
 
-    // Gamepad Yaw/Roll (Left Stick X-Axis)
+    // Gamepad yaw/roll (Left stick x-axis).
     if (IsGamepadAvailable(0)) {
         float leftX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
         
-        // Deadzone check: We ignore inputs smaller than 0.15f to prevent stick drift
+        // Deadzone check: We ignore inputs smaller than 0.15f to prevent stick drift.
         if (fabsf(leftX) > 0.15f) {
             player->rotation.y -= leftX * 0.02f * dtScale; 
             targetRoll = -leftX * 0.4f;          
@@ -119,7 +118,7 @@ void UpdatePlayer(Player *player) {
         player->velocity.y += lift;
 
         // Pitch up/down only works well if we have forward speed (airflow over the wings).
-        // Keyboard Pitch
+        // Keyboard pitch.
         if (IsKeyDown(KEY_SPACE)) {
             player->velocity.y += forwardSpeed * 0.05f; // Use speed to climb.
             targetPitch = 0.3f;                         
@@ -129,7 +128,7 @@ void UpdatePlayer(Player *player) {
             targetPitch = -0.3f;                        
         }
 
-        // Gamepad Pitch (Left Stick Y-Axis)
+        // Gamepad pitch (Left stick y-axis).
         // In aviation: Pulling stick BACK (positive Y) raises the nose. 
         if (IsGamepadAvailable(0)) {
             float leftY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
@@ -154,7 +153,7 @@ void UpdatePlayer(Player *player) {
             targetPitch = -0.15f;
         }
 
-        // Gamepad Pitch (Left Stick Y-Axis)
+        // Gamepad pitch (Left stick y-axis)
         if (IsGamepadAvailable(0)) {
             float leftY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
             if (fabsf(leftY) > 0.15f) {
@@ -189,7 +188,7 @@ void UpdatePlayer(Player *player) {
     // Crash conditions.
     bool hasCrashed = false;
     
-    // MODIFIED: We set the fallback to absolute zero (0.0f) instead of 0.5f
+    // We set the fallback to absolute zero (0.0f) instead of 0.5f
     // so the mathematical floor is exactly at Y = 0.
     float groundHeight = 0.0f; 
 
@@ -250,8 +249,8 @@ void UpdatePlayer(Player *player) {
         // When touching the ground, smoothly force the nose back to a level position.
         player->rotation.x = Lerp(player->rotation.x, 0.0f, 0.1f);
         
-        // --- ADDED: ZERO-FLOOR THROTTLE KILL ---
-        // If the player touches the absolute bottom (Y = 0, which means safeFloor is 0.5f)
+        // Zero-floor throttle kill.
+        // If the player touches the absolute bottom (Y = 0, which means safeFloor is 0.5f).
         // or if they fly off the map where no mesh exists, we kill the engine.
         if (player->position.y <= 0.5f) {
             player->throttle = 0.0f;
@@ -299,7 +298,7 @@ void UpdatePlayer(Player *player) {
                         player->position.z + (rightZ * engineOffset * sideDir) 
                     };
 
-                    // Generate a tiny random velocity for horizontal spread (turbulence)
+                    // Generate a tiny random velocity for horizontal spread (turbulence).
                     player->smoke[i].velocity.x = (float)GetRandomValue(-15, 15) / 1000.0f;
                     player->smoke[i].velocity.y = 0.02f; // Upward drift.
                     player->smoke[i].velocity.z = (float)GetRandomValue(-15, 15) / 1000.0f;
@@ -311,13 +310,13 @@ void UpdatePlayer(Player *player) {
         }
     }
 
-    // 2. Update active particles
+    // 2. Update active particles.
     for (int i = 0; i < MAX_PARTICLES; i++) {
         if (player->smoke[i].active) {
             player->smoke[i].life -= 0.02f; 
             player->smoke[i].position.y += 0.02f;
 
-            // Apply physical drift
+            // Apply physical drift.
             player->smoke[i].position.x += player->smoke[i].velocity.x * dtScale;
             player->smoke[i].position.y += player->smoke[i].velocity.y * dtScale;
             player->smoke[i].position.z += player->smoke[i].velocity.z * dtScale;

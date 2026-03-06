@@ -9,10 +9,12 @@
 #include "raylib.h"
 #include "raymath.h"
 
+
 // --- CONSTANTS ---
 // Defining the maximum number of smoke particles on screen here
 // makes it easy to add more later without changing the logic.
 #define MAX_PARTICLES 200
+
 
 // --- ENUMERATIONS (STATES) ---
 // An 'enum' is a way to assign names to numbers. 
@@ -34,9 +36,7 @@ typedef enum VehicleType {
 typedef struct Particle {
     Vector3 position; // Where the smoke is in the 3D world.
     Vector3 velocity; // Controls the chaotic drift.
-
     float life;       // How much time it has left before disappearing (1.0f to 0.0f).
-    
     bool active;      // Is this particle currently being used?
 } Particle;
 
@@ -62,10 +62,13 @@ typedef struct Player {
 // These declarations tell the compiler the names of our functions and what parameters they take,
 // so it doesn't panic when we call them in main.c before defining what they actually do.
 
-// Initializes and returns a brand new Player package.
-// We pass the chosen vehicle type, and it sets up the starting position and physics.
-// Notice it returns a full 'Player' struct (passed by value).
-Player InitPlayer(VehicleType type);
+// --- PLAYER FACTORY FUNCTION ---
+// Creates and returns a fully initialized Player structure ready for flight.
+// This function configures the unique physical properties of the chosen vehicle type,
+// and spawns it precisely at the level's designated coordinates and orientation.
+// Notice it returns the entire 'Player' struct by value, creating a fresh 
+// copy in RAM that the main game loop will take ownership of.
+Player InitPlayer(VehicleType type, Vector3 startPos, float startYaw);
 
 // Updates the physics and reads the input for the player.
 // VERY IMPORTANT: Notice the asterisk (*). We are passing a POINTER to the player.

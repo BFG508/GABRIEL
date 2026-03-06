@@ -1,7 +1,17 @@
-// Include stdbool library to use booleans
+// Include stdbool library to use booleans.
 #include <stdbool.h>
 
-// Include Raylib's libraries
+// Include stdio library to use file input/output operations.
+#include <stdio.h>
+
+// Include string library to use string manipulation functions.
+#include <string.h>
+
+// Include math library to use advanced mathematical functions.
+#include <math.h>
+
+
+// Include Raylib's libraries.
 #include "raylib.h"
 #include "raymath.h"
 
@@ -18,22 +28,40 @@
 // from moving the plane while they are still in the main menu.
 typedef enum GameState {
     STATE_MENU,
+    STATE_LEVEL_SELECT,
+    STATE_VEHICLE_SELECT,
     STATE_PLAYING,
     STATE_NAME_INPUT,
     STATE_LEADERBOARD
 } GameState;
 
 
+// --- OUTLINED TEXT ---
+// Draws text with a solid border by rendering it 8 times around the center point.
+static void DrawTextOutlined(const char *text, int posX, int posY, int fontSize, Color color, int outlineSize) {
+    DrawText(text, posX - outlineSize, posY, fontSize, BLACK);
+    DrawText(text, posX + outlineSize, posY, fontSize, BLACK);
+    DrawText(text, posX, posY - outlineSize, fontSize, BLACK);
+    DrawText(text, posX, posY + outlineSize, fontSize, BLACK);
+    DrawText(text, posX - outlineSize, posY - outlineSize, fontSize, BLACK);
+    DrawText(text, posX + outlineSize, posY - outlineSize, fontSize, BLACK);
+    DrawText(text, posX - outlineSize, posY + outlineSize, fontSize, BLACK);
+    DrawText(text, posX + outlineSize, posY + outlineSize, fontSize, BLACK);
+    DrawText(text, posX, posY, fontSize, color);
+}
+
+
+// -- MAIN FUNCTION --
 int main(void) {
     // --- 1. INITIALIZATION (SETUP) ---
     
-    // Allow the user to resize the window
+    // Allow the user to resize the window.
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     
-    // Open a window with a temporary size so Raylib can connect to the OS
+    // Open a window with a temporary size so Raylib can connect to the OS.
     InitWindow(800, 600, "Simple Flight Simulator");
     
-    // Ask the OS for the current monitor's dimensions
+    // Ask the OS for the current monitor's dimensions.
     int monitor = GetCurrentMonitor();
     int displayWidth = GetMonitorWidth(monitor);
     int displayHeight = GetMonitorHeight(monitor);
@@ -43,20 +71,24 @@ int main(void) {
     int targetHeight = displayHeight - 100;
     int targetWidth = (targetHeight * 4) / 3;
     
-    // Safety check: just in case the user has a vertical monitor (width is smaller than height)
+    // Safety check: just in case the user has a vertical monitor (width is smaller than height).
     if (targetWidth > displayWidth) {
         targetWidth = displayWidth - 100;
         targetHeight = (targetWidth * 3) / 4;
     }
     
-    // Apply the calculated 4:3 size and center the window on the screen perfectly
+    // Apply the calculated 4:3 size and center the window on the screen perfectly.
     SetWindowSize(targetWidth, targetHeight);
     SetWindowPosition((displayWidth - targetWidth) / 2, (displayHeight - targetHeight) / 2);
 
+    // Initialize audio device before loading resources.
+    InitAudioDevice();
 
-    InitAudioDevice(); // Initialize audio device before loading resources.
+    // Force the game to run at a stable 60 frames per second.
+    SetTargetFPS(60);
 
-    SetTargetFPS(60); // Force the game to run at a stable 60 frames per second.
+    // Disable default ESC behavior
+    SetExitKey(KEY_NULL);
 
     // Call our custom module to load heavy files into RAM.
     LoadGameResources(); 
@@ -69,7 +101,7 @@ int main(void) {
     
     // Setup the 3D camera.
     Camera3D camera = { 0 };
-    camera.up = (Vector3){ 0.0f, 20.0f, 0.0f }; // Defines which way is "up" (Y axis).
+    camera.up = (Vector3){ 0.0f, 20.0f, 0.0f }; // Defines which way is "up" (Y-axis).
     camera.fovy = 60.0f;                        // Field of View (zoom level).
     camera.projection = CAMERA_PERSPECTIVE;     // Gives a realistic 3D depth effect.
 
@@ -79,64 +111,178 @@ int main(void) {
     // Toggle to hide/show the controls UI.
     bool showControls = true;
 
-    // Initialize the Race System (The track and the referee).
-    RaceSystem race = InitRace();
 
-    // Load existing records from the hard drive into RAM.
-    Leaderboard leaderboard = LoadLeaderboard("data/times.txt");
+    // --- LEVEL & RACE SETUP ---
+    // We must declare the level variables before initializing the race, 
+    // so we can tell the Track Designer which layout to build.
+    int currentLevel = 1;
     
-    // Variables to handle the keyboard input for the player's name.
-    char playerName[MAX_NAME_LENGTH + 1] = "\0"; // Empty string to start.
-    int letterCount = 0;                         // Tracks how many letters have been typed.
+    // Instead of a hardcoded constant, we probe the 'data' folder 
+    // to see how many level files actually exist in sequential order.
+    int MAX_LEVELS = 0;
+    while (true) {
+        // Guess the next filename.
+        const char *testFilename = TextFormat("levels/lvl%d.txt", MAX_LEVELS + 1);
+        
+        // Try to open it.
+        FILE *testFile = fopen(testFilename, "r");
+        
+        if (testFile != NULL) {
+            // The file exists! Close it immediately and increase our count.
+            fclose(testFile);
+            MAX_LEVELS++;
+        } else {
+            // The file doesn't exist. We have reached the end of the available levels.
+            break; 
+        }
+    }
+
+    // Initialize the Race System (The track and the referee) using the default level.
+    RaceSystem race = InitRace(currentLevel);
+
+    // --- LEADERBOARD & TEXT INPUT SETUP ---
+    // We leave the leaderboard struct empty for now. 
+    // It will be dynamically loaded when the player finishes a specific level.
+    Leaderboard leaderboard = { 0 };
+
+    char playerName[MAX_NAME_LENGTH + 1] = "\0"; 
+    int letterCount = 0;                         
+
+    // Variables for the gamepad virtual keyboard (Arcade style input).
+    // This allows players without a physical keyboard to enter their names.
+    const char virtualKeyboard[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ ";
+    int virtualKeyboardLen = 38;
+    int virtualKeyIndex = 0;
+
+    // Timer for continuous scrolling.
+    float stickScrollTimer = 0.0f;
+
+    // Analog Stick Latches.
+    // These prevent the grid selection from flying at 60 slots per second 
+    // when the player holds the analog stick in a direction.
+    bool stickMovedX = false;
+    bool stickMovedY = false;
 
 
     // --- 2. THE MAIN GAME LOOP ---
     // This loop runs 60 times per second until the user clicks the X or presses ESC.
     while (!WindowShouldClose()) {
         
-        // Exit with gamepad.
-        // If the left middle button (View/Back) is pressed, break the loop to close the game.
-        if (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_LEFT)) {
-            break;
+        // --- 0) GLOBAL BACK / EXIT LOGIC ---
+        // We handle the ESC key (Keyboard) and the View/Back button (Gamepad).
+        if (IsKeyPressed(KEY_ESCAPE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_LEFT))) {
+            
+            if (currentState == STATE_PLAYING || 
+                currentState == STATE_VEHICLE_SELECT || 
+                currentState == STATE_NAME_INPUT || 
+                currentState == STATE_LEADERBOARD) 
+            {
+                // If flying or choosing vehicle, abort the mission and return to Level Select.
+                currentState = STATE_LEVEL_SELECT;
+                
+                // Mute engines so they don't keep buzzing in the menu.
+                StopSound(planeSound);
+                StopSound(helicopterSound);
+            } else if (currentState == STATE_MENU || currentState == STATE_LEVEL_SELECT) {
+                // If in any other menu, close the game completely.
+                break; 
+            }
         }
 
-        // --- A) UPDATE PHASE (LOGIC & MATH) ---
-        // Here we process input and move things, but we do not draw anything yet.
+        // --- A) UPDATE PHASE ---
         if (currentState == STATE_MENU) {
-            
-            // UpdateMusicStream must be called every single frame to keep the buffer flowing.
             UpdateMusicStream(menuMusic);
-            
-            // If the music isn't playing yet, start it.
             if (!IsMusicStreamPlaying(menuMusic)) {
                 PlayMusicStream(menuMusic);
             }
             
-            // Wait for the user to press 1 (Keyboard) or X (Gamepad) to select the Plane
+            // Wait for ENTER (Keyboard) or START (Gamepad) to begin the game.
+            if (IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) {
+                currentState = STATE_LEVEL_SELECT;
+            }
+            
+        } else if (currentState == STATE_LEVEL_SELECT) {
+            UpdateMusicStream(menuMusic);
+            if (!IsMusicStreamPlaying(menuMusic)) {
+                PlayMusicStream(menuMusic);
+            }
+
+            // Analog stick reading.
+            float leftStickX = 0.0f;
+            float leftStickY = 0.0f;
+            if (IsGamepadAvailable(0)) {
+                leftStickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
+                leftStickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
+            }
+
+            // Reset the latches if the stick returns to the center (deadzone of 20%).
+            if (fabsf(leftStickX) < 0.2f) stickMovedX = false;
+            if (fabsf(leftStickY) < 0.2f) stickMovedY = false;
+
+            // Grid navigation logic (5x5).
+            // Right navigation.
+            if (IsKeyPressed(KEY_RIGHT) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) || (leftStickX > 0.5f && !stickMovedX)) {
+                currentLevel++;
+                if (currentLevel > 25) currentLevel = 1;
+                stickMovedX = true;
+            }
+            // Left navigation.
+            if (IsKeyPressed(KEY_LEFT) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) || (leftStickX < -0.5f && !stickMovedX)) {
+                currentLevel--;
+                if (currentLevel < 1) currentLevel = 25;
+                stickMovedX = true; 
+            }
+            // Down navigation.
+            if (IsKeyPressed(KEY_DOWN) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) || (leftStickY > 0.5f && !stickMovedY)) {
+                currentLevel += 5;
+                if (currentLevel > 25) currentLevel -= 25;
+                stickMovedY = true;
+            }
+            // Up navigation.
+            if (IsKeyPressed(KEY_UP) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) || (leftStickY < -0.5f && !stickMovedY)) {
+                currentLevel -= 5;
+                if (currentLevel < 1) currentLevel += 25;
+                stickMovedY = true;
+            }
+            
+            // Confirm level selection.
+            if (IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) {
+                if (currentLevel <= MAX_LEVELS) {
+                    currentState = STATE_VEHICLE_SELECT;
+                }
+            }
+            
+        } else if (currentState == STATE_VEHICLE_SELECT) {
+            UpdateMusicStream(menuMusic);
+            
             if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
-                StopMusicStream(menuMusic);         
-                player = InitPlayer(VEHICLE_PLANE); 
-                race = InitRace();
+                StopMusicStream(menuMusic);
+                race = InitRace(currentLevel);
+                player = InitPlayer(VEHICLE_PLANE, race.startPos, race.startYaw);
                 currentState = STATE_PLAYING;       
             } 
-            // Wait for the user to press 2 (Keyboard) or Y (Gamepad) to select the Helicopter
             else if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
-                StopMusicStream(menuMusic);              
-                player = InitPlayer(VEHICLE_HELICOPTER);
-                race = InitRace();
+                StopMusicStream(menuMusic);      
+                race = InitRace(currentLevel);
+                player = InitPlayer(VEHICLE_HELICOPTER, race.startPos, race.startYaw);
                 currentState = STATE_PLAYING;            
             }
+            
         } else if (currentState == STATE_PLAYING) {
 
-            // Mid-flight vehicle switching
-            if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) player.type = VEHICLE_PLANE;
-            if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) player.type = VEHICLE_HELICOPTER;
+            // Mid-flight vehicle switching.
+            if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
+                player.type = VEHICLE_PLANE;
+            }
+            if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
+                player.type = VEHICLE_HELICOPTER;
+            }
 
             // Quick restart.
             // If the player makes a mistake, press R to restart the race instantly.
             if (IsKeyPressed(KEY_R) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) {
-                race = InitRace();                // Resets all rings and stopwatch.
-                player = InitPlayer(player.type); // Teleports player back to origin.
+                race = InitRace(currentLevel);                                  // Pass the current level.
+                player = InitPlayer(player.type, race.startPos, race.startYaw); // Teleports player back to origin.
             }
 
             // Upate the vehicle's physics.
@@ -181,13 +327,13 @@ int main(void) {
                 SetSoundPitch(helicopterSound, pitch);
             }
             
-            // Dynamic logic camera
-            // Toggle camera mode when pressing 'C' (Keyboard) or 'A' (Gamepad)
+            // Dynamic logic camera.
+            // Toggle camera mode when pressing 'C' (Keyboard) or 'A' (Gamepad).
             if (IsKeyPressed(KEY_C) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) isFirstPerson = !isFirstPerson;
 
             if (isFirstPerson) {
                 // 1st person (Cockpit).
-                // Place camera exactly at player's position, slightly elevated for eye level
+                // Place camera exactly at player's position, slightly elevated for eye level.
                 camera.position = (Vector3){ player.position.x, player.position.y + 0.5f, player.position.z };
                 
                 // Calculate exactly where the nose of the vehicle is pointing using trigonometry.
@@ -207,8 +353,8 @@ int main(void) {
                 camera.position.z = player.position.z + (cosf(player.rotation.y) * cameraDistance);
             }
 
-            // Check if the race is over and the 5-second victory screen has passed.
-            if (race.isFinished && race.finishedTimer > 5.0f) {
+            // Check if the race is over and the 3-second victory screen has passed.
+            if (race.isFinished && race.finishedTimer > 3.0f) {
                 currentState = STATE_NAME_INPUT;
                 
                 StopSound(planeSound);
@@ -224,35 +370,102 @@ int main(void) {
         
         } else if (currentState == STATE_NAME_INPUT) {
             
-            // --- TEXT INPUT LOGIC ---
+            // Keyboard logic (PC).
             // GetCharPressed() reads the keyboard queue character by character.
             int key = GetCharPressed();
-            
-            // While there are keys in the queue, process them.
             while (key > 0) {
                 // Only allow standard printable characters (ASCII 32 to 125) and respect the limit.
                 if ((key >= 32) && (key <= 125) && (letterCount < MAX_NAME_LENGTH)) {
+                    // In the ASCII table, lowercase letters are between 97 ('a') and 122 ('z').
+                    // Their uppercase counterparts are exactly 32 steps below them.
+                    if (key >= 97 && key <= 122) {
+                        key -= 32; 
+                    }
+
                     playerName[letterCount] = (char)key;
-                    playerName[letterCount + 1] = '\0'; // Always keep the string null-terminated.
+                    playerName[letterCount + 1] = '\0';
                     letterCount++;
                 }
-                key = GetCharPressed(); // Check if there's another key pressed very quickly.
+                key = GetCharPressed(); 
             }
             
-            // Handle BACKSPACE to delete characters.
+            // Handle backspace to delete characters.
             if (IsKeyPressed(KEY_BACKSPACE)) {
                 letterCount--;
                 if (letterCount < 0) letterCount = 0;
                 playerName[letterCount] = '\0';
             }
+
+            // Gamepad logic (Virtual keyboard).
+            if (IsGamepadAvailable(0)) {
+                // Read the left stick X axis.
+                float leftStickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
+                
+                // Track if we should move this frame.
+                bool moveRight = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT);
+                bool moveLeft = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT);
+
+                // Continuous analog stick scrolling.
+                if (fabsf(leftStickX) > 0.5f) {
+                    
+                    // 1. Initial immediate movement (The first 'click').
+                    if (!stickMovedX) {
+                        if (leftStickX > 0.5f) moveRight = true;
+                        if (leftStickX < -0.5f) moveLeft = true;
+                        stickMovedX = true;
+                        stickScrollTimer = -0.3f; // Initial delay before auto-repeating starts (0.3 seconds).
+                    } 
+                    // 2. Continuous movement while held down.
+                    else {
+                        stickScrollTimer += GetFrameTime();
+                        // Speed of the scroll (0.10f = moves 10 times per second).
+                        if (stickScrollTimer > 0.10f) {
+                            if (leftStickX > 0.5f) moveRight = true;
+                            if (leftStickX < -0.5f) moveLeft = true;
+                            stickScrollTimer = 0.0f; // Reset timer for the next letter.
+                        }
+                    }
+                } else {
+                    // Stick returned to center (deadzone).
+                    stickMovedX = false;
+                    stickScrollTimer = 0.0f;
+                }
+
+                // Apply the calculated movement.
+                if (moveRight) {
+                    virtualKeyIndex = (virtualKeyIndex + 1) % virtualKeyboardLen;
+                }
+                if (moveLeft) {
+                    virtualKeyIndex = (virtualKeyIndex - 1 + virtualKeyboardLen) % virtualKeyboardLen;
+                }
+                
+                // Type the selected letter (Button A).
+                if (IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN) && letterCount < MAX_NAME_LENGTH) {
+                    playerName[letterCount] = virtualKeyboard[virtualKeyIndex];
+                    playerName[letterCount + 1] = '\0';
+                    letterCount++;
+                }
+                
+                // Delete letter (Button B).
+                if (IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) {
+                    letterCount--;
+                    if (letterCount < 0) letterCount = 0;
+                    playerName[letterCount] = '\0';
+                }
+            }
             
-            // Handle ENTER to submit the name.
-            if (IsKeyPressed(KEY_ENTER) && letterCount > 0) {
-                // 1. Add the new champion to the RAM array.
+            // Submit name and save (ENTER or START),
+            if ((IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) && letterCount > 0) {
+                
+                // 1. Generate a dynamic filename based on the level just played,
+                const char *filename = TextFormat("data/times_lvl%d.txt", currentLevel);
+                
+                // 2. Load, update, and save the specific leaderboard,
+                leaderboard = LoadLeaderboard(filename);
                 AddLeaderboardEntry(&leaderboard, playerName, race.timer, player.type);
-                // 2. Save the RAM array to the Hard Drive.
-                SaveLeaderboard(&leaderboard, "data/times.txt");
-                // 3. Move to the Leaderboard screen.
+                SaveLeaderboard(&leaderboard, filename);
+                
+                // 3. Proceed to the viewing screen,
                 currentState = STATE_LEADERBOARD;
             }
             
@@ -260,11 +473,12 @@ int main(void) {
             
             // Wait strictly for ENTER (Keyboard) or 'B' (Gamepad) to return to the main menu.
             if (IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) {
-                currentState = STATE_MENU;
+                currentState = STATE_LEVEL_SELECT;
             }
         }
 
 
+        
         // --- B) DRAW PHASE (RENDERING) ---
         // Now that all the math is done, we paint the results onto the screen.
         BeginDrawing();
@@ -278,26 +492,90 @@ int main(void) {
         int screenHeight = GetScreenHeight();
 
         if (currentState == STATE_MENU) {
-            
-            // Main menu.
+            // Main title.
             const char *title = "SIMPLE FLIGHT SIMULATOR";
             int titleWidth = MeasureText(title, 50); 
             DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.25f, 50, DARKBLUE);
 
-            const char *author = "Author: Benito Fernandez";
-            int authorWidth = MeasureText(author, 35); 
-            DrawText(author, (screenWidth - authorWidth) / 2, screenHeight * 0.33f, 35, WHITE);
+            const char *author = "by Benito Fernandez";
+            int authorWidth = MeasureText(author, 20);
+            DrawText(author, (screenWidth - authorWidth) / 2, screenHeight * 0.35f, 20, WHITE);
+
+            // Blinking start message.
+            const char *msg = IsGamepadAvailable(0) ? "PRESS [START] TO BEGIN" : "PRESS [ENTER] TO BEGIN";
+            int msgWidth = MeasureText(msg, 30);
+            if ((int)(GetTime() * 2) % 2 == 0) DrawText(msg, (screenWidth - msgWidth) / 2, screenHeight * 0.6f, 30, GRAY);
             
-            // NEW: DYNAMIC MENU TEXT BASED ON GAMEPAD CONNECTION
+        } else if (currentState == STATE_LEVEL_SELECT) {
+            // 1. Main screen title.
+            const char *title = "SELECT CIRCUIT";
+            int titleWidth = MeasureText(title, 40); 
+            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.1f, 40, DARKBLUE);
+            
+            // Create an empty string buffer to hold the name.
+            char currentName[50] = { 0 }; 
+            
+            // Ask race.c to open the file and fetch the name for us.
+            GetLevelName(currentLevel, currentName);
+            
+            // 2. Draw the current level number and its specific title.
+            const char *lvlText = TextFormat("< LEVEL %d: %s >", currentLevel, currentName);
+            int lvlWidth = MeasureText(lvlText, 30);
+            
+            // Color logic: Gold if the file exists (not restricted), Gray if it doesn't.
+            Color titleColor;
+            if (strcmp(currentName, "RESTRICTED AREA") != 0) {
+                titleColor = GOLD;
+            } else {
+                titleColor = GRAY;
+            }
+            DrawText(lvlText, (screenWidth - lvlWidth) / 2, screenHeight * 0.18f, 30, titleColor);
+            
+            // Level grid (5x5).
+            int gridCols = 5;
+            float slotSize = 80.0f;
+            float padding = 20.0f;
+            
+            // Calculate starting position to center the 5x5 grid.
+            float startX = (screenWidth - (gridCols * slotSize + (gridCols - 1) * padding)) / 2;
+            float startY = screenHeight * 0.3f;
+
+            for (int i = 0; i < 25; i++) { // 5x5 = 25 slots.
+                int row = i / gridCols;
+                int col = i % gridCols;
+                int levelNum = i + 1;
+
+                Rectangle slotRect = { startX + col * (slotSize + padding), startY + row * (slotSize + padding), slotSize, slotSize };
+                
+                // Color logic: Gold if selected, Dark Blue if available, Gray if empty.
+                Color boxColor = (levelNum == currentLevel) ? GOLD : (levelNum <= MAX_LEVELS ? DARKBLUE : LIGHTGRAY);
+                
+                DrawRectangleRec(slotRect, boxColor);
+                DrawRectangleLinesEx(slotRect, 2, WHITE);
+
+                // Only draw number if the level exists.
+                if (levelNum <= MAX_LEVELS) {
+                    DrawText(TextFormat("%d", levelNum), slotRect.x + 30, slotRect.y + 25, 30, WHITE);
+                }
+            }
+
+            const char *msg = IsGamepadAvailable(0) ? "D-PAD/LEFT STICK to navigate, [A] to confirm" : "ARROWS to navigate, [ENTER] to confirm";
+            int msgWidth = MeasureText(msg, 20);
+            DrawText(msg, (screenWidth - msgWidth) / 2, screenHeight * 0.85f, 20, GRAY);
+            
+        } else if (currentState == STATE_VEHICLE_SELECT) {
+            const char *title = "SELECT AIRCRAFT";
+            int titleWidth = MeasureText(title, 40); 
+            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.25f, 40, DARKBLUE);
+            
             const char *opt1;
             const char *opt2;
-
             if (IsGamepadAvailable(0)) {
-                opt1 = "Press [X] to fly the SR-71 Blackbird";
-                opt2 = "Press [Y] to fly the AH-64 Apache";
+                opt1 = "Press [X] for SR-71 Blackbird";
+                opt2 = "Press [Y] for AH-64 Apache";
             } else {
-                opt1 = "Press [1] to fly the SR-71 Blackbird";
-                opt2 = "Press [2] to fly the AH-64 Apache";
+                opt1 = "Press [1] for SR-71 Blackbird";
+                opt2 = "Press [2] for AH-64 Apache";
             }
 
             int opt1Width = MeasureText(opt1, 25); 
@@ -318,8 +596,8 @@ int main(void) {
                 // Infinite green grid.
                 // Draw a massive solid dark green plane to hide the skybox below.
                 // We place it exactly at Y = 0.0f. 
-                // The size is 5000x5000 units, which covers the entire visible horizon.
-                DrawPlane((Vector3){ player.position.x, 0.0f, player.position.z }, (Vector2){ 5000.0f, 5000.0f }, DARKGREEN);
+                // The size is 10000x10000 units, which covers the entire visible horizon.
+                DrawPlane((Vector3){ player.position.x, 0.0f, player.position.z }, (Vector2){ 10000.0f, 10000.0f }, DARKGREEN);
 
                 // Draw the grid lines slightly above the plane (Y = 0.05f).
                 // If we draw them at exactly 0.0f, they will overlap with the solid plane 
@@ -400,18 +678,18 @@ int main(void) {
                 
             EndMode3D(); // Switch back to 2D rendering mode.
 
-            // UI controls (Toggleable)
+            // UI controls (Toggleable).
             if (showControls) {
                 if (IsGamepadAvailable(0)) {
-                    DrawText("LT/RT: Throttle | Stick: Move", 20, 20, 20, DARKGRAY);
+                    DrawTextOutlined("LT/RT: Throttle | Left Stick: Move", 20, 20, 20, LIGHTGRAY, 2);
                 } else {
-                    DrawText("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 20, 20, 20, DARKGRAY);
+                    DrawTextOutlined("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 20, 20, 20, LIGHTGRAY, 2);
                 }
             } else {
                 if (IsGamepadAvailable(0)) {
-                    DrawText("Press [Menu] to show controls", 20, 20, 10, GRAY);
+                    DrawTextOutlined("Press [Menu] to show controls", 20, 20, 14, LIGHTGRAY, 1);
                 } else {
-                    DrawText("Press [H] to show controls", 20, 20, 10, GRAY);
+                    DrawTextOutlined("Press [H] to show controls", 20, 20, 14, LIGHTGRAY, 1);
                 }
             }
 
@@ -419,7 +697,7 @@ int main(void) {
             DrawRaceUI(&race);
 
             // Aeronautical HUD.
-            DrawText(TextFormat("ALTITUDE: %.0f ft", player.position.y * 10.0f), 20, screenHeight - 100, 20, LIME);
+            DrawTextOutlined(TextFormat("ALTITUDE: %.0f ft", player.position.y * 10.0f), 20, screenHeight - 100, 20, LIME, 2);
 
             float maxThrottle;
             if (player.type == VEHICLE_PLANE) {
@@ -427,14 +705,12 @@ int main(void) {
             } else {
                 maxThrottle = 0.4f;
             }
-
             int powerPercentage = (int)((-player.throttle / maxThrottle) * 100.0f);
-            
-            DrawText(TextFormat("POWER: %d %%", powerPercentage), 20, screenHeight - 60, 20, LIME);
+            DrawTextOutlined(TextFormat("POWER: %d %%", powerPercentage), 20, screenHeight - 60, 20, LIME, 2);
 
         }  else if (currentState == STATE_NAME_INPUT) {
             
-            // Name Input Screen
+            // Name input acreen.
             const char *title = "NEW FLIGHT RECORD!";
             int titleWidth = MeasureText(title, 40);
             DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.2f, 40, GOLD);
@@ -443,43 +719,53 @@ int main(void) {
             int promptWidth = MeasureText(prompt, 30);
             DrawText(prompt, (screenWidth - promptWidth) / 2, screenHeight * 0.4f, 30, WHITE);
             
-            // Draw the actual name being typed inside a classic console-style bracket
+            // Draw the actual name being typed inside a classic console-style bracket.
             const char *nameDisplay = TextFormat("[ %s_ ]", playerName);
             int nameWidth = MeasureText(nameDisplay, 40);
             DrawText(nameDisplay, (screenWidth - nameWidth) / 2, screenHeight * 0.5f, 40, LIME);
             
-            // Blinking instructions
+            // Blinking instructions.
             if ((int)(GetTime() * 2) % 2 == 0) {
                 const char *instruction = "PRESS ENTER TO CONFIRM";
                 int instWidth = MeasureText(instruction, 20);
                 DrawText(instruction, (screenWidth - instWidth) / 2, screenHeight * 0.7f, 20, GRAY);
             }
+
+            if (IsGamepadAvailable(0)) {
+                const char *virtualUI = TextFormat("<- [ %c ] ->", virtualKeyboard[virtualKeyIndex]);
+                int virtualWidth = MeasureText(virtualUI, 40);
+                DrawText(virtualUI, (screenWidth - virtualWidth) / 2, screenHeight * 0.65f, 40, ORANGE);
+                
+                const char *gpInst = "[A] Select Letter | [X] Delete | [START] Confirm";
+                int gpInstWidth = MeasureText(gpInst, 20);
+                DrawText(gpInst, (screenWidth - gpInstWidth) / 2, screenHeight * 0.8f, 20, GRAY);
+            }
             
         } else if (currentState == STATE_LEADERBOARD) {
             
-            // Leaderboard Screen
-            ClearBackground(DARKBLUE); // A different background to make it feel like a computer terminal
+            // Leaderboard screen.
+            ClearBackground(DARKBLUE); // A different background to make it feel like a computer terminal.
             
             const char *title = "--- TOP 10 PILOTS ---";
             int titleWidth = MeasureText(title, 40);
             DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.1f, 40, GOLD);
             
-            // Loop through the records and print them list-style
+            // Loop through the records and print them list-style.
             int startY = screenHeight * 0.25f;
             int spacing = 35;
             
-// Headers for the columns
+            // Headers for the columns.
             DrawText("PILOT", screenWidth * 0.2f, startY - 40, 20, GRAY);
             DrawText("TIME", screenWidth * 0.5f, startY - 40, 20, GRAY);
             DrawText("VEHICLE", screenWidth * 0.75f, startY - 40, 20, GRAY);
 
             for (int i = 0; i < leaderboard.count; i++) {
                 
-                // Format the strings
+                // Format the strings.
                 const char *recordStr = TextFormat("%d. %s", i + 1, leaderboard.entries[i].name);
                 const char *timeStr = TextFormat("%.2f s", leaderboard.entries[i].time);
                 
-                // Determine the vehicle name
+                // Determine the vehicle name.
                 const char *vehStr = "Unknown";
                 if (leaderboard.entries[i].vehicle == VEHICLE_PLANE) {
                     vehStr = "Airplane";
@@ -487,17 +773,17 @@ int main(void) {
                     vehStr = "Helicopter";
                 }
                 
-                // Draw Name (Left column)
+                // Draw Name (Left column).
                 DrawText(recordStr, screenWidth * 0.2f, startY + (i * spacing), 30, WHITE);
                 
-                // Draw Time (Center column)
+                // Draw Time (Center column).
                 DrawText(timeStr, screenWidth * 0.5f, startY + (i * spacing), 30, LIME);
 
-                // Draw Vehicle (Right column)
+                // Draw Vehicle (Right column).
                 DrawText(vehStr, screenWidth * 0.75f, startY + (i * spacing), 30, SKYBLUE);
             }
             
-            // Dynamic instructions to exit based on connected hardware
+            // Dynamic instructions to exit based on connected hardware.
             const char *exitText;
             if (IsGamepadAvailable(0)) {
                 exitText = "PRESS [B] TO RETURN TO BASE";

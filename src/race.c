@@ -1,5 +1,12 @@
-// Include math library for trigonometric functions.
+// Include stdio library to use file input/output operations.
+#include <stdio.h>
+
+// Include string library to use string manipulation functions.
+#include <string.h>
+
+// Include math library to use advanced mathematical functions.
 #include <math.h>
+
 
 // We include our own header file.
 // We also need resource_manager.h so this .c file knows what a 'ringModel' is.
@@ -9,52 +16,81 @@
 #include "raymath.h"
 
 
+// --- OUTLINED TEXT ---
+// Draws text with a solid border by rendering it 8 times around the center point.
+static void DrawTextOutlined(const char *text, int posX, int posY, int fontSize, Color color, int outlineSize) {
+    DrawText(text, posX - outlineSize, posY, fontSize, BLACK);
+    DrawText(text, posX + outlineSize, posY, fontSize, BLACK);
+    DrawText(text, posX, posY - outlineSize, fontSize, BLACK);
+    DrawText(text, posX, posY + outlineSize, fontSize, BLACK);
+    DrawText(text, posX - outlineSize, posY - outlineSize, fontSize, BLACK);
+    DrawText(text, posX + outlineSize, posY - outlineSize, fontSize, BLACK);
+    DrawText(text, posX - outlineSize, posY + outlineSize, fontSize, BLACK);
+    DrawText(text, posX + outlineSize, posY + outlineSize, fontSize, BLACK);
+    DrawText(text, posX, posY, fontSize, color);
+}
+
+
 // --- FACTORY FUNCTION ---
-// This function creates a new Race setup from scratch and hands it back to main.c.
-// It acts as the "Track Designer", placing the rings in the 3D world.
-RaceSystem InitRace(void) {
-    // We create a local RaceSystem variable and initialize all its memory to 0.
-    // { 0 } is a great C trick to ensure no garbage data is left in memory.
+// This acts as the "Track Designer". Instead of hardcoding the rings in C,
+// it dynamically reads a text file from the hard drive based on the levelID.
+RaceSystem InitRace(int levelID) {
     RaceSystem race = { 0 };
     
+    // 1. Setup the Referee rules (Default starting state).
+    race.targetRing = 0;       
+    race.timer = 0.0f;         
+    race.finishedTimer = 0.0f; 
+    race.isRaceActive = true;  
+    race.isFinished = false;   
 
-    // 1. Setup the track layout (Waypoints)
-    // We space them out so the player has time to maneuver.
-    // Ring 0: Straight ahead and slightly up.
-    race.rings[0].position = (Vector3){ 0.0f, 20.0f, -100.0f };
-    race.rings[0].radius = 60.0f;
-    race.rings[0].active = true;
+    // 2. Build the filename string dynamically (e.g., "levels/lvl1.txt").
+    const char *filename = TextFormat("levels/lvl%d.txt", levelID);
+    
+    // 3. Open the file in Read ("r") mode.
+    FILE *file = fopen(filename, "r");
+    
+    if (file != NULL) {
+        // Read and discard the first line (the name) because the track builder,
+        // only cares about the numbers below it.
+        char dummyName[50];
+        fgets(dummyName, 50, file); 
+        
+        // Read the 4 floats for player spawn (X, Y, Z, Yaw).
+        fscanf(file, "%f %f %f %f", &race.startPos.x, &race.startPos.y, &race.startPos.z, &race.startYaw);
 
-    // Ring 1: Further ahead, turning right.
-    race.rings[1].position = (Vector3){ 50.0f, 30.0f, -250.0f };
-    race.rings[1].radius = 60.0f;
-    race.rings[1].active = true;
+        int ringCount = 0;
+        
+        // Read the first line: How many rings are in this level?
+        if (fscanf(file, "%d", &ringCount) == 1) {
+            
+            // Safety Check: Prevent buffer overflow if the file has too many rings.
+            if (ringCount > MAX_RINGS) {
+                ringCount = MAX_RINGS;
+            }
+            race.totalRings = ringCount;
 
-    // Ring 2: Dropping altitude.
-    race.rings[2].position = (Vector3){ 100.0f, 10.0f, -400.0f };
-    race.rings[2].radius = 60.0f;
-    race.rings[2].active = true;
+            // Loop through the file and read the properties for each ring.
+            for (int i = 0; i < ringCount; i++) {
+                // fscanf reads the 7 floats separated by spaces.
+                fscanf(file, "%f %f %f %f %f %f %f", 
+                    &race.rings[i].position.x,
+                    &race.rings[i].position.y,
+                    &race.rings[i].position.z,
+                    &race.rings[i].radius,
+                    &race.rings[i].pitch,
+                    &race.rings[i].yaw,
+                    &race.rings[i].roll);
+                
+                race.rings[i].active = true;
+            }
+        }
+        
+        // Always close the file when you are done to free OS resources.
+        fclose(file);
+        
+    }
 
-    // Ring 3: Sharp left turn.
-    race.rings[3].position = (Vector3){ -50.0f, 40.0f, -500.0f };
-    race.rings[3].radius = 60.0f;
-    race.rings[3].yaw = 60.0f; // Rotate 60 degrees to face the incoming player.
-    race.rings[3].active = true;
-
-    // Ring 4: The finish line (Lower and smaller for extra difficulty).
-    race.rings[4].position = (Vector3){ -50.0f, 15.0f, -700.0f };
-    race.rings[4].radius = 50.0f;
-    race.rings[4].active = true;
-
-
-    // 2. Setup the Referee rules
-    race.targetRing = 0;       // The player must cross ring index 0 first
-    race.timer = 0.0f;         // Clock starts at zero
-    race.finishedTimer = 0.0f; // Finish line timer starts at zero
-    race.isRaceActive = true;  // The race begins immediately
-    race.isFinished = false;   // Not finished yet
-
-    // Hand the finished race package back to main.c
     return race;
 }
 
@@ -89,14 +125,14 @@ void UpdateRace(RaceSystem *race, Player *player) {
         // Calculate the vector pointing from the ring to the player
         Vector3 diff = Vector3Subtract(player->position, ring->position);
 
-        // Calculate which way the ring's hole is facing based on its Yaw angle
-        Vector3 ringForward = (Vector3){
-            sinf(ring->yaw * DEG2RAD),
-            0.0f,
-            cosf(ring->yaw * DEG2RAD)
+        // Calculate which way the ring's hole is facing based on yaw and pitch.
+        Vector3 ringForward = { 
+            -sinf(ring->yaw * DEG2RAD) * cosf(ring->pitch * DEG2RAD), 
+             sinf(ring->pitch * DEG2RAD), 
+            -cosf(ring->yaw * DEG2RAD) * cosf(ring->pitch * DEG2RAD) 
         };
 
-        // Calculate depth (Z) and radial (X-Y) distance to the ring's mathematical center
+        // Calculate depth (Z) and radial (X-Y) distance to the ring's mathematical center.
         float depthDistance = fabsf(Vector3DotProduct(diff, ringForward));
         float totalDistanceSqr = Vector3LengthSqr(diff);
         float distance2D = sqrtf(fabsf(totalDistanceSqr - (depthDistance * depthDistance)));
@@ -146,14 +182,14 @@ void UpdateRace(RaceSystem *race, Player *player) {
         if (i == race->targetRing) {
             
             // We restrict the valid scoring zone to only the inner 15% of the ring
-            // for visual immersion
-            float validHoleRadius = ring->radius * 0.15f;
+            // for visual immersion.
+            float validHoleRadius = ring->radius * 0.10f;
 
             if (distance2D <= validHoleRadius && depthDistance < 1.0f) {
                 ring->active = false;
                 race->targetRing++;
 
-                if (race->targetRing >= MAX_RINGS) {
+                if (race->targetRing >= race->totalRings) {
                     race->isFinished = true;
                     race->isRaceActive = false; 
                 }
@@ -172,14 +208,31 @@ void DrawRace3D(RaceSystem *race, Player *player) {
         if (race->rings[i].active) {
             
             Color ringColor;
-            if (i == race->targetRing) ringColor = GOLD;
-            else ringColor = Fade(LIGHTGRAY, 0.3f);
             
-            // We use DrawModelEx to allow individual rotations (yaw).
-            Vector3 rotationAxis = { 0.0f, 1.0f, 0.0f }; // Rotate around the Up (Y) axis.
+            if (i == race->targetRing) {
+                ringColor = GOLD;
+            } else {
+                ringColor = Fade(LIGHTGRAY, 0.3f);
+            }
+            
+            // 1. Save the 3D model's original base matrix.
+            Matrix baseTransform = ringModel.transform;
+            
+            // 2. Generate the full rotation matrix.
+            Matrix matRoll  = MatrixRotateZ(race->rings[i].roll * DEG2RAD);
+            Matrix matPitch = MatrixRotateX(race->rings[i].pitch * DEG2RAD);
+            Matrix matYaw   = MatrixRotateY(race->rings[i].yaw * DEG2RAD);
+            Matrix dynamicRotation = MatrixMultiply(MatrixMultiply(matRoll, matPitch), matYaw);
+            
+            // 3. Apply the rotation to the model temporarily.
+            ringModel.transform = MatrixMultiply(baseTransform, dynamicRotation);
+            
+            // 4. Draw the model (We pass 0.0f rotation because it is already embedded in the transform).
             Vector3 scale = { race->rings[i].radius, race->rings[i].radius, race->rings[i].radius };
+            DrawModelEx(ringModel, race->rings[i].position, (Vector3){0, 1, 0}, 0.0f, scale, ringColor);
             
-            DrawModelEx(ringModel, race->rings[i].position, rotationAxis, race->rings[i].yaw, scale, ringColor);
+            // 5. Restore the original matrix.
+            ringModel.transform = baseTransform;
         }
     }
 
@@ -224,10 +277,10 @@ void DrawRace3D(RaceSystem *race, Player *player) {
         Vector3 leftWing = Vector3Add(headBase, Vector3Scale(rightDir, 0.25f));
         Vector3 rightWing = Vector3Subtract(headBase, Vector3Scale(rightDir, 0.25f));
         
-        // 5. Draw the 3 thin cylinders to form the --> shape
-        DrawCylinderEx(arrowTail, arrowTip, 0.03f, 0.03f, 6, RED); // Central shaft
-        DrawCylinderEx(leftWing, arrowTip, 0.03f, 0.03f, 6, RED);  // Left wing
-        DrawCylinderEx(rightWing, arrowTip, 0.03f, 0.03f, 6, RED); // Right wing
+        // 5. Draw the 3 thin cylinders to form the --> shape.
+        DrawCylinderEx(arrowTail, arrowTip, 0.03f, 0.03f, 6, RED); // Central shaft.
+        DrawCylinderEx(leftWing, arrowTip, 0.03f, 0.03f, 6, RED);  // Left wing.
+        DrawCylinderEx(rightWing, arrowTip, 0.03f, 0.03f, 6, RED); // Right wing.
     }
 }
 
@@ -236,35 +289,56 @@ void DrawRace3D(RaceSystem *race, Player *player) {
 // This must be called outside BeginMode3D() in main.c, right next to your telemetry.
 void DrawRaceUI(RaceSystem *race) {
     
-    // Get current screen dimensions dynamically
+    // Get current screen dimensions dynamically.
     int screenWidth = GetScreenWidth();
     int screenHeight = GetScreenHeight();
     
     if (race->isRaceActive) {
-        
-        // 1. Draw the stopwatch at 8% from the top
+        // 1. Draw the stopwatch at 8% from the top.
         const char *timerText = TextFormat("RACE TIME: %.2f", race->timer);
         int timerWidth = MeasureText(timerText, 30);
-        DrawText(timerText, (screenWidth - timerWidth) / 2, screenHeight * 0.08f, 30, WHITE);
+        DrawTextOutlined(timerText, (screenWidth - timerWidth) / 2, screenHeight * 0.08f, 30, WHITE, 2);
 
-        // 2. Draw progress at 13% from the top
-        const char *ringText = TextFormat("TARGET RING: %d / %d", race->targetRing + 1, MAX_RINGS);
+        // 2. Draw progress at 13% from the top.
+        const char *ringText = TextFormat("TARGET RING: %d / %d", race->targetRing + 1, race->totalRings);
         int ringWidth = MeasureText(ringText, 20);
-        DrawText(ringText, (screenWidth - ringWidth) / 2, screenHeight * 0.13f, 20, GOLD);
+        DrawTextOutlined(ringText, (screenWidth - ringWidth) / 2, screenHeight * 0.13f, 20, GOLD, 2);
         
     }
     
-    // Only draw the victory message if less than 5 seconds have passed
-    else if (race->isFinished && race->finishedTimer < 5.0f) {
+    // Only draw the victory message if less than 3 seconds have passed.
+    else if (race->isFinished && race->finishedTimer < 3.0f) {
         
-        // Victory message perfectly centered horizontally, at 40% height
+        // Victory message perfectly centered horizontally, at 40% height.
         const char *winText = "CIRCUIT COMPLETE!";
         int winWidth = MeasureText(winText, 40);
-        DrawText(winText, (screenWidth - winWidth) / 2, screenHeight * 0.4f, 40, LIME);
+        DrawTextOutlined(winText, (screenWidth - winWidth) / 2, screenHeight * 0.4f, 40, LIME, 2);
         
-        // Final time perfectly centered horizontally, at 50% height
+        // Final time perfectly centered horizontally, at 50% height.
         const char *timeText = TextFormat("FINAL TIME: %.2f SECONDS", race->timer);
         int timeWidth = MeasureText(timeText, 30);
-        DrawText(timeText, (screenWidth - timeWidth) / 2, screenHeight * 0.5f, 30, WHITE);
+        DrawTextOutlined(timeText, (screenWidth - timeWidth) / 2, screenHeight * 0.5f, 30, WHITE, 2);
+    }
+}
+
+
+// GET LEVEL NAME ---
+// Opens the text file just to read the very first line (the mission title).
+void GetLevelName(int levelID, char *outName) {
+    const char *filename = TextFormat("levels/lvl%d.txt", levelID);
+    FILE *file = fopen(filename, "r");
+    
+    if (file != NULL) {
+        // Read the first line (up to 50 characters)
+        if (fgets(outName, 50, file) != NULL) {
+            // fgets grabs the invisible 'newline' character at the end. We must remove it.
+            outName[strcspn(outName, "\r\n")] = 0; 
+        } else {
+            strcpy(outName, "UNKNOWN");
+        }
+        fclose(file);
+    } else {
+        // If the file doesn't exist, we show this placeholder.
+        strcpy(outName, "RESTRICTED AREA"); 
     }
 }

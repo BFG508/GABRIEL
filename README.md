@@ -1,21 +1,25 @@
 # G.A.B.R.I.E.L. ✈️
 **G**eneral **A**viation & **B**asic **R**aylib **I**nteractive **E**ngine **L**ayer
 
-A basic but dynamic 3D flight simulator written purely in C. This project was created to practice low-level C programming concepts, manual memory management, 3D coordinate systems, matrix transformations, and game loop architecture.
+A basic but dynamic 3D flight simulator written purely in C. This project was created to practice low-level C programming concepts, manual memory management, 3D coordinate systems, matrix transformations, game loop architecture, and finite state machines (state transitions).
 
 ## 🚀 Features
+* **Data-Driven Level Design:** Dynamically parses external `.txt` files to generate 3D tracks, ring coordinates, mission titles, and player spawn points without recompiling the C code. Includes a scalable 5x5 grid mission selector.
+* **Persistent Leaderboards:** A local file-based high-score system that tracks the top fastest pilots per level, saving their completion time and chosen aircraft. Includes an arcade-style virtual wheel keyboard for seamless gamepad text input.
 * **Time Trial Racing System:** A fully functional 3D checkpoint circuit with strict cylindrical collision detection, an active stopwatch, and a dynamic vectorial navigation arrow.
 * **Continuous Throttle Physics:** Smooth acceleration, lift generation, and momentum decay (friction) custom-built for both fixed-wing aircraft and helicopters.
 * **Dynamic Visual Tilt & Steering:** The aircraft yaw, rolls, and pitches realistically based on user input and aerospace matrix multiplication.
 * **Advanced Collision Detection:** Dual raycasting system to detect mountains directly ahead and precisely calculate 3D ground height beneath the vehicle.
 * **Adaptive 4:3 Resolution:** Auto-scaling window that detects monitor size to maximize screen real estate while maintaining a retro simulator aspect ratio.
 * **Full Gamepad & Steam Deck Support:** Plug-and-play Xbox controller integration with analog precision and real-time dynamic UI text swapping.
-* **State Machine:** Clean architectural separation between the Main Menu and the active Game Loop.
+* **State Machine:** Clean architectural separation between the Main Menu, Level Select, Game Loop, and Leaderboards.
 
 ## 🛠️ Technology Stack
 This project uses **Raylib**, a highly modular and simple-to-use library to enjoy videogames programming in pure C without the overhead of massive game engines.
 
 ## 🎮 Controls
+
+### ✈️ Flight Controls
 | Action | Keyboard | Gamepad (Xbox / Steam Deck) |
 | :--- | :--- | :--- |
 | **Throttle (Engine Power)** | W / S | LT / RT (Analog Triggers) |
@@ -27,6 +31,15 @@ This project uses **Raylib**, a highly modular and simple-to-use library to enjo
 | **Toggle UI Controls** | H | Menu / Start Button |
 | **Quick Restart** | R | B Button |
 | **Exit Game** | ESC | View / Back Button |
+
+### 🖥️ Menu & Navigation
+| Action | Keyboard | Gamepad (Xbox / Steam Deck) |
+| :--- | :--- | :--- |
+| **Navigate Grid / Letters** | Arrow Keys | D-PAD / Left Stick |
+| **Confirm / Select Level** | ENTER | A Button |
+| **Virtual Keyboard: Type** | A-Z Keys | A Button |
+| **Virtual Keyboard: Delete** | BACKSPACE | X Button |
+| **Virtual Keyboard: Submit** | ENTER | Menu / Start Button |
 
 ## ⚙️ Prerequisites & Compilation
 This project uses a universal `Makefile`. You must have **Raylib** installed on your system to compile it.

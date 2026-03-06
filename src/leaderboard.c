@@ -11,6 +11,7 @@
     #define MAKE_DIR(name) mkdir(name, 0777)
 #endif
 
+
 // --- LOAD FUNCTION ---
 // Reads the saved records from a text file when the game starts.
 Leaderboard LoadLeaderboard(const char *filename) {
@@ -27,7 +28,7 @@ Leaderboard LoadLeaderboard(const char *filename) {
         // Read the first line: how many records are saved?
         if (fscanf(file, "%d", &lb.count) == 1) {
             
-            // Loop through the file and read each Name and Time
+            // Loop through the file and read each name and time.
             for (int i = 0; i < lb.count; i++) {
                 // fscanf reads string (%s) and float (%f) separated by a space.
                 int vType;
@@ -73,7 +74,7 @@ void SaveLeaderboard(Leaderboard *lb, const char *filename) {
 
 
 // --- ADD ENTRY FUNCTION ---
-// This is the core logic. It sorts the new time, drops the 11th place, and keeps the Top 10.
+// This is the core logic. It sorts the new time, drops the 11th place, and keeps the top 10.
 void AddLeaderboardEntry(Leaderboard *lb, const char *name, float time, VehicleType vehicle) {
     
     // 1. Filtering.
@@ -96,7 +97,7 @@ void AddLeaderboardEntry(Leaderboard *lb, const char *name, float time, VehicleT
     int startShiftIndex = (lb->count < MAX_LEADERBOARD) ? lb->count : MAX_LEADERBOARD - 1;
     
     for (int i = startShiftIndex; i > targetIndex; i--) {
-        lb->entries[i] = lb->entries[i - 1]; // Copy the entry above into this slot
+        lb->entries[i] = lb->entries[i - 1]; // Copy the entry above into this slot.
     }
 
     // 4. Inserting the champion.

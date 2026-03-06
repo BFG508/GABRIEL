@@ -36,7 +36,7 @@ obj/
 Thumbs.db
 
 # Files generated from the game
-.data/
+data/
 
 # Android build artifacts
 *.apk

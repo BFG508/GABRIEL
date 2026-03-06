@@ -58,6 +58,7 @@ void LoadGameResources(void) {
     SetMusicVolume(menuMusic, 0.55f);
 }
 
+
 // --- UNLOAD FUNCTION ---
 // The Golden Rule of C: If you allocate memory, you MUST free it.
 // This function cleans up the RAM. We call it at the very end of main.c, 

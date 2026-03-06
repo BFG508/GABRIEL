@@ -12,7 +12,7 @@
 
 // --- CONSTANTS ---
 // Defining the number of rings here makes it easy to add more later without changing the logic.
-#define MAX_RINGS 5
+#define MAX_RINGS 50
 
 
 // --- DATA STRUCTURES ---
@@ -22,18 +22,25 @@
 typedef struct Ring {
     Vector3 position; // Where the ring is located in the 3D world.
     float radius;     // How big the ring is (collision size).
+    float pitch;      // Rotation on the Z axis (in degrees) to face different directions.
     float yaw;        // Rotation on the Y axis (in degrees) to face different directions.
+    float roll;       // Rotation on the X axis (in degrees) to face different directions.
     bool active;      // True if the player still needs to fly through this ring.
 } Ring;
 
 // The main system that acts as the "Referee" of the race.
 typedef struct RaceSystem {
     Ring rings[MAX_RINGS]; // The array (list) containing all the rings in the circuit.
+    int totalRings;        // Number of total rings.
     int targetRing;        // The index (0 to MAX_RINGS - 1) of the NEXT ring the player must cross.
+
     float timer;           // The current race time in seconds.
     float finishedTimer;   // Tracks how many seconds have passed since crossing the finish line.
     bool isRaceActive;     // True while the player is racing, False when finished or not started.
     bool isFinished;       // True if the player successfully crossed all rings.
+
+    Vector3 startPos;      // Where the player should spawn.
+    float startYaw;        // Which way the player should face.
 } RaceSystem;
 
 
@@ -44,7 +51,7 @@ typedef struct RaceSystem {
 // Initializes and returns a brand new Race package.
 // It sets up the starting positions of all the rings and resets the timer.
 // Notice it returns a full 'RaceSystem' struct (passed by value), just like InitPlayer.
-RaceSystem InitRace(void);
+RaceSystem InitRace(int levelID);
 
 // Updates the race logic (timer and collisions).
 // VERY IMPORTANT: We pass POINTERS to both the race and the player.
@@ -56,5 +63,9 @@ void UpdateRace(RaceSystem *race, Player *player);
 // We pass a POINTER to avoid copying the whole array of rings into memory 60 times per second.
 void DrawRace3D(RaceSystem *race, Player *player);
 void DrawRaceUI(RaceSystem *race);
+
+// Reads only the first line of the level file to get its name for the menu UI.
+// We pass a buffer (outName) where the function will write the text.
+void GetLevelName(int levelID, char *outName);
 
 #endif // Ends the include guard
