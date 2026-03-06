@@ -94,7 +94,12 @@ void AddLeaderboardEntry(Leaderboard *lb, const char *name, float time, VehicleT
     // 3. Shifting losers down.
     // We must move everyone below 'targetIndex' down by one slot to make room.
     // We start from the bottom (either the last item, or the 9th slot to drop the 10th).
-    int startShiftIndex = (lb->count < MAX_LEADERBOARD) ? lb->count : MAX_LEADERBOARD - 1;
+    int startShiftIndex;
+    if (lb->count < MAX_LEADERBOARD) {
+        startShiftIndex = lb->count;
+    } else {
+        startShiftIndex = MAX_LEADERBOARD - 1;
+    }
     
     for (int i = startShiftIndex; i > targetIndex; i--) {
         lb->entries[i] = lb->entries[i - 1]; // Copy the entry above into this slot.

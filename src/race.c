@@ -294,15 +294,15 @@ void DrawRaceUI(RaceSystem *race) {
     int screenHeight = GetScreenHeight();
     
     if (race->isRaceActive) {
-        // 1. Draw the stopwatch at 8% from the top.
+        // 1. Draw the stopwatch at % from the top.
         const char *timerText = TextFormat("RACE TIME: %.2f", race->timer);
         int timerWidth = MeasureText(timerText, 30);
-        DrawTextOutlined(timerText, (screenWidth - timerWidth) / 2, screenHeight * 0.08f, 30, WHITE, 2);
+        DrawTextOutlined(timerText, (screenWidth - timerWidth) / 2, screenHeight * 0.05f, 30, WHITE, 2);
 
-        // 2. Draw progress at 13% from the top.
+        // 2. Draw progress at 10% from the top.
         const char *ringText = TextFormat("TARGET RING: %d / %d", race->targetRing + 1, race->totalRings);
         int ringWidth = MeasureText(ringText, 20);
-        DrawTextOutlined(ringText, (screenWidth - ringWidth) / 2, screenHeight * 0.13f, 20, GOLD, 2);
+        DrawTextOutlined(ringText, (screenWidth - ringWidth) / 2, screenHeight * 0.10f, 20, GOLD, 2);
         
     }
     

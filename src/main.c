@@ -108,6 +108,10 @@ int main(void) {
     // First person camera toggle.
     bool isFirstPerson = false;
     
+    // Camera orbit variables.
+    float cameraAngleYaw = 0.0f;   // Horizontal rotation (Left/Right).
+    float cameraAnglePitch = 0.0f; // Vertical rotation (Up/Down).
+    
     // Toggle to hide/show the controls UI.
     bool showControls = true;
 
@@ -151,7 +155,7 @@ int main(void) {
     // Variables for the gamepad virtual keyboard (Arcade style input).
     // This allows players without a physical keyboard to enter their names.
     const char virtualKeyboard[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ ";
-    int virtualKeyboardLen = 38;
+    int virtualKeyboardLen = 37;
     int virtualKeyIndex = 0;
 
     // Timer for continuous scrolling.
@@ -170,8 +174,8 @@ int main(void) {
         
         // --- 0) GLOBAL BACK / EXIT LOGIC ---
         // We handle the ESC key (Keyboard) and the View/Back button (Gamepad).
-        if (IsKeyPressed(KEY_ESCAPE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_LEFT))) {
-            
+        if (IsKeyPressed(KEY_ESCAPE) || 
+           (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_LEFT))) {
             if (currentState == STATE_PLAYING || 
                 currentState == STATE_VEHICLE_SELECT || 
                 currentState == STATE_NAME_INPUT || 
@@ -197,7 +201,8 @@ int main(void) {
             }
             
             // Wait for ENTER (Keyboard) or START (Gamepad) to begin the game.
-            if (IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) {
+            if (IsKeyPressed(KEY_ENTER) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) {
                 currentState = STATE_LEVEL_SELECT;
             }
             
@@ -219,34 +224,44 @@ int main(void) {
             if (fabsf(leftStickX) < 0.2f) stickMovedX = false;
             if (fabsf(leftStickY) < 0.2f) stickMovedY = false;
 
-            // Grid navigation logic (5x5).
+            // Grid navigation logic (5x5) with strict Row/Column wrapping.
+            int idx = currentLevel - 1;
+            int row = idx / 5;
+            int col = idx % 5;
+
             // Right navigation.
-            if (IsKeyPressed(KEY_RIGHT) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) || (leftStickX > 0.5f && !stickMovedX)) {
-                currentLevel++;
-                if (currentLevel > 25) currentLevel = 1;
+            if (IsKeyPressed(KEY_RIGHT) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) ||
+               (leftStickX > 0.5f && !stickMovedX)) {
+                col = (col + 1) % 5;
                 stickMovedX = true;
             }
             // Left navigation.
-            if (IsKeyPressed(KEY_LEFT) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) || (leftStickX < -0.5f && !stickMovedX)) {
-                currentLevel--;
-                if (currentLevel < 1) currentLevel = 25;
+            if (IsKeyPressed(KEY_LEFT) ||
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) || 
+               (leftStickX < -0.5f && !stickMovedX)) {
+                col = (col - 1 + 5) % 5;
                 stickMovedX = true; 
             }
             // Down navigation.
-            if (IsKeyPressed(KEY_DOWN) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) || (leftStickY > 0.5f && !stickMovedY)) {
-                currentLevel += 5;
-                if (currentLevel > 25) currentLevel -= 25;
+            if (IsKeyPressed(KEY_DOWN) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) || 
+               (leftStickY > 0.5f && !stickMovedY)) {
+                row = (row + 1) % 5;
                 stickMovedY = true;
             }
             // Up navigation.
-            if (IsKeyPressed(KEY_UP) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) || (leftStickY < -0.5f && !stickMovedY)) {
-                currentLevel -= 5;
-                if (currentLevel < 1) currentLevel += 25;
+            if (IsKeyPressed(KEY_UP) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) || 
+               (leftStickY < -0.5f && !stickMovedY)) {
+                row = (row - 1 + 5) % 5;
                 stickMovedY = true;
             }
+            currentLevel = (row * 5) + col + 1;
             
             // Confirm level selection.
-            if (IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) {
+            if (IsKeyPressed(KEY_ENTER) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) {
                 if (currentLevel <= MAX_LEVELS) {
                     currentState = STATE_VEHICLE_SELECT;
                 }
@@ -255,13 +270,15 @@ int main(void) {
         } else if (currentState == STATE_VEHICLE_SELECT) {
             UpdateMusicStream(menuMusic);
             
-            if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
+            if (IsKeyPressed(KEY_ONE) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
                 StopMusicStream(menuMusic);
                 race = InitRace(currentLevel);
                 player = InitPlayer(VEHICLE_PLANE, race.startPos, race.startYaw);
                 currentState = STATE_PLAYING;       
             } 
-            else if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
+            else if (IsKeyPressed(KEY_TWO) || 
+                    (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
                 StopMusicStream(menuMusic);      
                 race = InitRace(currentLevel);
                 player = InitPlayer(VEHICLE_HELICOPTER, race.startPos, race.startYaw);
@@ -271,16 +288,19 @@ int main(void) {
         } else if (currentState == STATE_PLAYING) {
 
             // Mid-flight vehicle switching.
-            if (IsKeyPressed(KEY_ONE) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
+            if (IsKeyPressed(KEY_ONE) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
                 player.type = VEHICLE_PLANE;
             }
-            if (IsKeyPressed(KEY_TWO) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
+            if (IsKeyPressed(KEY_TWO) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
                 player.type = VEHICLE_HELICOPTER;
             }
 
             // Quick restart.
             // If the player makes a mistake, press R to restart the race instantly.
-            if (IsKeyPressed(KEY_R) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) {
+            if (IsKeyPressed(KEY_R) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) {
                 race = InitRace(currentLevel);                                  // Pass the current level.
                 player = InitPlayer(player.type, race.startPos, race.startYaw); // Teleports player back to origin.
             }
@@ -329,7 +349,86 @@ int main(void) {
             
             // Dynamic logic camera.
             // Toggle camera mode when pressing 'C' (Keyboard) or 'A' (Gamepad).
-            if (IsKeyPressed(KEY_C) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) isFirstPerson = !isFirstPerson;
+            if (IsKeyPressed(KEY_C) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) {
+                isFirstPerson = !isFirstPerson;
+            }
+
+            if (!isFirstPerson) {
+                // Interpolation factor for smooth camera movement. Lower values create a more cinematic, delayed response.
+
+                if (IsGamepadAvailable(0)) {
+                    // Gamepad: Absolute positioning. The camera directly mirrors the physical tilt of the right thumbstick.
+                    float smoothFactor = 0.1f;
+
+                    float rightStickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X);
+                    float rightStickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y);
+
+                    // Deadzone check. Ignores tiny inputs to prevent camera jitter caused by hardware stick drift.
+                    if (fabsf(rightStickX) < 0.15f) {
+                        rightStickX = 0.0f;
+                    }
+                    if (fabsf(rightStickY) < 0.15f) {
+                        rightStickY = 0.0f;
+                    }
+
+                    // Calculate the target angle by multiplying the normalized stick input by the maximum allowed radians.
+                    float targetYaw = -rightStickX * 2.5f; 
+                    float targetPitch = rightStickY * 1.5f; 
+
+                    // Smoothly transition the current camera angle toward the target angle using Linear Interpolation (Lerp).
+                    cameraAngleYaw = Lerp(cameraAngleYaw, targetYaw, smoothFactor);
+                    cameraAnglePitch = Lerp(cameraAnglePitch, targetPitch, smoothFactor);
+                } else {
+                    // Keyboard: Relative positioning. The camera rotates continuously as long as the arrow keys are held down.
+                    float smoothFactor = 0.3f; 
+                    
+                    float targetYaw = cameraAngleYaw;
+                    float targetPitch = cameraAnglePitch;
+
+                    if (IsKeyDown(KEY_RIGHT)) {
+                        targetYaw -= 0.08f;
+                    }
+                    if (IsKeyDown(KEY_LEFT)) {
+                        targetYaw += 0.08f;
+                    }
+                    if (IsKeyDown(KEY_UP)) {
+                        targetPitch -= 0.08f;
+                    }
+                    if (IsKeyDown(KEY_DOWN)) {
+                        targetPitch += 0.08f;
+                    }
+
+                    // Auto-centering mechanism. Smoothly returns the target angle to 0.0 when no keys are pressed.
+                    if (!IsKeyDown(KEY_RIGHT) && !IsKeyDown(KEY_LEFT)) {
+                        targetYaw *= 0.90f;
+                    }
+                    if (!IsKeyDown(KEY_UP) && !IsKeyDown(KEY_DOWN)) {
+                        targetPitch *= 0.90f;
+                    }
+
+                    // Clamp the target angles to prevent the camera from rotating too far or clipping through the aircraft.
+                    if (targetPitch > 1.5f) {
+                        targetPitch = 1.5f;
+                    }
+                    if (targetPitch < -0.5f) {
+                        targetPitch = -0.5f;
+                    }
+                    if (targetYaw > 2.5f) {
+                        targetYaw = 2.5f;
+                    }
+                    if (targetYaw < -2.5f) {
+                        targetYaw = -2.5f;
+                    }
+
+                    // Apply the same Lerp transition used for the gamepad to maintain a consistent feel across input devices.
+                    cameraAngleYaw = Lerp(cameraAngleYaw, targetYaw, smoothFactor);
+                    cameraAnglePitch = Lerp(cameraAnglePitch, targetPitch, smoothFactor);
+                }
+            } else {
+                // Reset manual orbit angles when the player switches back to First Person view to ensure a clean transition.
+                cameraAngleYaw = player.rotation.y; 
+                cameraAnglePitch = 0.0f;
+            }
 
             if (isFirstPerson) {
                 // 1st person (Cockpit).
@@ -343,14 +442,19 @@ int main(void) {
                 camera.target.z = camera.position.z - (cosf(player.rotation.y) * cosf(player.rotation.x));
                 
             } else {
-                // 3rd person (Chase).
+                // 3rd person (Orbit chase camera).
                 camera.target = player.position;
                 float cameraDistance = 4.0f;
                 float cameraHeight = 1.5f; 
 
-                camera.position.x = player.position.x + (sinf(player.rotation.y) * cameraDistance);
-                camera.position.y = player.position.y + cameraHeight;
-                camera.position.z = player.position.z + (cosf(player.rotation.y) * cameraDistance);
+                // Combine player rotation with manual orbit input.
+                float totalYaw = player.rotation.y + cameraAngleYaw;
+                float totalPitch = cameraAnglePitch;
+
+                // Spherical coordinates calculation.
+                camera.position.x = player.position.x + (sinf(totalYaw) * cosf(totalPitch) * cameraDistance);
+                camera.position.y = player.position.y + (sinf(totalPitch) * cameraDistance) + cameraHeight;
+                camera.position.z = player.position.z + (cosf(totalYaw) * cosf(totalPitch) * cameraDistance);
             }
 
             // Check if the race is over and the 3-second victory screen has passed.
@@ -363,10 +467,14 @@ int main(void) {
                 // Reset the typing variables for a fresh start.
                 playerName[0] = '\0';
                 letterCount = 0;
+                virtualKeyIndex = 0;
             }
             
             // Toggle controls visibility when pressing 'H' (Keyboard) or 'Menu/Start' (Gamepad).
-            if (IsKeyPressed(KEY_H) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) showControls = !showControls;
+            if (IsKeyPressed(KEY_H) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) {
+                showControls = !showControls;
+            }
         
         } else if (currentState == STATE_NAME_INPUT) {
             
@@ -374,8 +482,13 @@ int main(void) {
             // GetCharPressed() reads the keyboard queue character by character.
             int key = GetCharPressed();
             while (key > 0) {
+                // If the player presses SPACE (ASCII 32), we convert it to an Underscore (ASCII 95).
+                if (key == 32) {
+                    key = 95; 
+                }
+
                 // Only allow standard printable characters (ASCII 32 to 125) and respect the limit.
-                if ((key >= 32) && (key <= 125) && (letterCount < MAX_NAME_LENGTH)) {
+                if ((key >= 33) && (key <= 125) && (letterCount < MAX_NAME_LENGTH)) {
                     // In the ASCII table, lowercase letters are between 97 ('a') and 122 ('z').
                     // Their uppercase counterparts are exactly 32 steps below them.
                     if (key >= 97 && key <= 122) {
@@ -498,11 +611,16 @@ int main(void) {
             DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.25f, 50, DARKBLUE);
 
             const char *author = "by Benito Fernandez";
-            int authorWidth = MeasureText(author, 20);
-            DrawText(author, (screenWidth - authorWidth) / 2, screenHeight * 0.35f, 20, WHITE);
+            int authorWidth = MeasureText(author, 35);
+            DrawText(author, (screenWidth - authorWidth) / 2, screenHeight * 0.35f, 35, WHITE);
 
             // Blinking start message.
-            const char *msg = IsGamepadAvailable(0) ? "PRESS [START] TO BEGIN" : "PRESS [ENTER] TO BEGIN";
+            const char *msg;
+            if (IsGamepadAvailable(0)) { 
+                msg = "PRESS [START] TO BEGIN";
+            } else {
+                msg = "PRESS [ENTER] TO BEGIN";
+            }
             int msgWidth = MeasureText(msg, 30);
             if ((int)(GetTime() * 2) % 2 == 0) DrawText(msg, (screenWidth - msgWidth) / 2, screenHeight * 0.6f, 30, GRAY);
             
@@ -548,7 +666,14 @@ int main(void) {
                 Rectangle slotRect = { startX + col * (slotSize + padding), startY + row * (slotSize + padding), slotSize, slotSize };
                 
                 // Color logic: Gold if selected, Dark Blue if available, Gray if empty.
-                Color boxColor = (levelNum == currentLevel) ? GOLD : (levelNum <= MAX_LEVELS ? DARKBLUE : LIGHTGRAY);
+                Color boxColor;
+                if (levelNum == currentLevel) {
+                    boxColor = GOLD;
+                } else if (levelNum <= MAX_LEVELS) {
+                    boxColor = DARKBLUE;
+                } else {
+                    boxColor = LIGHTGRAY;
+                }
                 
                 DrawRectangleRec(slotRect, boxColor);
                 DrawRectangleLinesEx(slotRect, 2, WHITE);
@@ -559,7 +684,12 @@ int main(void) {
                 }
             }
 
-            const char *msg = IsGamepadAvailable(0) ? "D-PAD/LEFT STICK to navigate, [A] to confirm" : "ARROWS to navigate, [ENTER] to confirm";
+            const char *msg;
+            if (IsGamepadAvailable(0)) {
+                msg = "D-PAD/LEFT STICK to navigate, [A] to confirm";
+            } else {
+                msg = "ARROWS to navigate, [ENTER] to confirm";
+            }
             int msgWidth = MeasureText(msg, 20);
             DrawText(msg, (screenWidth - msgWidth) / 2, screenHeight * 0.85f, 20, GRAY);
             
@@ -680,11 +810,32 @@ int main(void) {
 
             // UI controls (Toggleable).
             if (showControls) {
+                // 1. Top-left: Movement & Throttle.
                 if (IsGamepadAvailable(0)) {
                     DrawTextOutlined("LT/RT: Throttle | Left Stick: Move", 20, 20, 20, LIGHTGRAY, 2);
                 } else {
                     DrawTextOutlined("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 20, 20, 20, LIGHTGRAY, 2);
                 }
+
+                // 2. Top-right: Camera & Restart.
+                const char *camRestText;
+                if (IsGamepadAvailable(0)) {
+                    camRestText = "Right Stick: Camera | [B] Restart | [A] POV ";
+                } else {
+                    camRestText = "Arrows: Camera | [R] Restart | [C] POV";
+                }
+                int camRestWidth = MeasureText(camRestText, 20);
+                DrawTextOutlined(camRestText, screenWidth - camRestWidth - 20, 20, 20, LIGHTGRAY, 2);
+
+                // 3. Bottom right: Vehicle Switch.
+                const char *vehText;
+                if (IsGamepadAvailable(0)) {
+                    vehText = "[X]/[Y] Switch Aircraft";
+                } else {
+                    vehText = "[1]/[2] Switch Aircraft";
+                }
+                int vehWidth = MeasureText(vehText, 20);
+                DrawTextOutlined(vehText, screenWidth - vehWidth - 20, screenHeight - 60, 20, ORANGE, 2);
             } else {
                 if (IsGamepadAvailable(0)) {
                     DrawTextOutlined("Press [Menu] to show controls", 20, 20, 14, LIGHTGRAY, 1);
@@ -713,36 +864,54 @@ int main(void) {
             // Name input acreen.
             const char *title = "NEW FLIGHT RECORD!";
             int titleWidth = MeasureText(title, 40);
-            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.2f, 40, GOLD);
+            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.15f, 40, GOLD);
             
             const char *prompt = "ENTER YOUR CALLSIGN, PILOT:";
             int promptWidth = MeasureText(prompt, 30);
-            DrawText(prompt, (screenWidth - promptWidth) / 2, screenHeight * 0.4f, 30, WHITE);
+            DrawText(prompt, (screenWidth - promptWidth) / 2, screenHeight * 0.35f, 30, WHITE);
             
             // Draw the actual name being typed inside a classic console-style bracket.
             const char *nameDisplay = TextFormat("[ %s_ ]", playerName);
             int nameWidth = MeasureText(nameDisplay, 40);
-            DrawText(nameDisplay, (screenWidth - nameWidth) / 2, screenHeight * 0.5f, 40, LIME);
-            
-            // Blinking instructions.
-            if ((int)(GetTime() * 2) % 2 == 0) {
-                const char *instruction = "PRESS ENTER TO CONFIRM";
-                int instWidth = MeasureText(instruction, 20);
-                DrawText(instruction, (screenWidth - instWidth) / 2, screenHeight * 0.7f, 20, GRAY);
-            }
+            DrawText(nameDisplay, (screenWidth - nameWidth) / 2, screenHeight * 0.45f, 40, LIME);
 
+            // Input instructions.
+            // 1. Draw the virtual keyboard ONLY if the player is using a gamepad.
             if (IsGamepadAvailable(0)) {
                 const char *virtualUI = TextFormat("<- [ %c ] ->", virtualKeyboard[virtualKeyIndex]);
                 int virtualWidth = MeasureText(virtualUI, 40);
-                DrawText(virtualUI, (screenWidth - virtualWidth) / 2, screenHeight * 0.65f, 40, ORANGE);
-                
-                const char *gpInst = "[A] Select Letter | [X] Delete | [START] Confirm";
-                int gpInstWidth = MeasureText(gpInst, 20);
-                DrawText(gpInst, (screenWidth - gpInstWidth) / 2, screenHeight * 0.8f, 20, GRAY);
+                DrawText(virtualUI, (screenWidth - virtualWidth) / 2, screenHeight * 0.60f, 40, ORANGE);
+            }
+            
+            // 2. Define the texts using a classic if-else based on the controller type.
+            const char *row1;
+            const char *row2;
+            const char *row3;
+
+            if (IsGamepadAvailable(0)) {
+                row1 = "LEFT STICK to Navigate";
+                row2 = "[A] Select Letter  |  [X] Delete";
+                row3 = "[START] Confirm";
+            } else {
+                row1 = "Type using your KEYBOARD";
+                row2 = "[BACKSPACE] Delete Letter";
+                row3 = "[ENTER] Confirm";
+            }
+
+            // 3. Draw the 3 rows ordered vertically.
+            int row1Width = MeasureText(row1, 20);
+            DrawText(row1, (screenWidth - row1Width) / 2, screenHeight * 0.70f, 20, GRAY);
+            
+            int row2Width = MeasureText(row2, 20);
+            DrawText(row2, (screenWidth - row2Width) / 2, screenHeight * 0.75f, 20, GRAY);
+            
+            // Classic blinking effect on the third row (Confirm).
+            if ((int)(GetTime() * 2) % 2 == 0) {
+                int row3Width = MeasureText(row3, 30);
+                DrawText(row3, (screenWidth - row3Width) / 2, screenHeight * 0.85f, 30, LIGHTGRAY);
             }
             
         } else if (currentState == STATE_LEADERBOARD) {
-            
             // Leaderboard screen.
             ClearBackground(DARKBLUE); // A different background to make it feel like a computer terminal.
             
@@ -760,7 +929,6 @@ int main(void) {
             DrawText("VEHICLE", screenWidth * 0.75f, startY - 40, 20, GRAY);
 
             for (int i = 0; i < leaderboard.count; i++) {
-                
                 // Format the strings.
                 const char *recordStr = TextFormat("%d. %s", i + 1, leaderboard.entries[i].name);
                 const char *timeStr = TextFormat("%.2f s", leaderboard.entries[i].time);
