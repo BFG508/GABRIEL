@@ -20,6 +20,7 @@ Sound planeSound;
 Sound helicopterSound;
 
 Music menuMusic;
+Music endingMusic;
 
 
 // --- LOAD FUNCTION ---
@@ -56,6 +57,9 @@ void LoadGameResources(void) {
 
     menuMusic = LoadMusicStream("resources/sounds/menu.mp3");
     SetMusicVolume(menuMusic, 0.55f);
+
+    endingMusic = LoadMusicStream("resources/sounds/ending.mp3");
+    SetMusicVolume(endingMusic, 0.55f);
 }
 
 
@@ -81,4 +85,5 @@ void UnloadGameResources(void) {
     UnloadSound(helicopterSound);
 
     UnloadMusicStream(menuMusic);
+    UnloadMusicStream(endingMusic);
 }

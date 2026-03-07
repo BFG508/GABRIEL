@@ -14,12 +14,14 @@
 // Include Raylib's libraries.
 #include "raylib.h"
 #include "raymath.h"
+#include "rlgl.h"
 
 // Notice we use quotes "" for our own files, and angle brackets <> for system libraries.
 #include "player.h"
 #include "resource_manager.h"
 #include "race.h"
 #include "leaderboard.h"
+#include "ui.h"
 
 
 // --- GAME STATES (STATE MACHINE) ---
@@ -36,21 +38,6 @@ typedef enum GameState {
 } GameState;
 
 
-// --- OUTLINED TEXT ---
-// Draws text with a solid border by rendering it 8 times around the center point.
-static void DrawTextOutlined(const char *text, int posX, int posY, int fontSize, Color color, int outlineSize) {
-    DrawText(text, posX - outlineSize, posY, fontSize, BLACK);
-    DrawText(text, posX + outlineSize, posY, fontSize, BLACK);
-    DrawText(text, posX, posY - outlineSize, fontSize, BLACK);
-    DrawText(text, posX, posY + outlineSize, fontSize, BLACK);
-    DrawText(text, posX - outlineSize, posY - outlineSize, fontSize, BLACK);
-    DrawText(text, posX + outlineSize, posY - outlineSize, fontSize, BLACK);
-    DrawText(text, posX - outlineSize, posY + outlineSize, fontSize, BLACK);
-    DrawText(text, posX + outlineSize, posY + outlineSize, fontSize, BLACK);
-    DrawText(text, posX, posY, fontSize, color);
-}
-
-
 // -- MAIN FUNCTION --
 int main(void) {
     // --- 1. INITIALIZATION (SETUP) ---
@@ -60,6 +47,10 @@ int main(void) {
     
     // Open a window with a temporary size so Raylib can connect to the OS.
     InitWindow(800, 600, "Simple Flight Simulator");
+
+    // Push the far clipping plane from the default 1000.0f out to 5000.0f units.
+    // This stops distant rings, mountains, and helipads from suddenly popping into existence.
+    rlSetClipPlanes(0.1f, 5000.0f);
     
     // Ask the OS for the current monitor's dimensions.
     int monitor = GetCurrentMonitor();
@@ -67,7 +58,7 @@ int main(void) {
     int displayHeight = GetMonitorHeight(monitor);
     
     // Calculate the maximum 4:3 resolution. 
-    // We subtract 100 pixels from the height so the Windows Taskbar doesn't overlap the game.
+    // We subtract 100 pixels from the height so the taskbar doesn't overlap the game.
     int targetHeight = displayHeight - 100;
     int targetWidth = (targetHeight * 4) / 3;
     
@@ -104,13 +95,6 @@ int main(void) {
     camera.up = (Vector3){ 0.0f, 20.0f, 0.0f }; // Defines which way is "up" (Y-axis).
     camera.fovy = 60.0f;                        // Field of View (zoom level).
     camera.projection = CAMERA_PERSPECTIVE;     // Gives a realistic 3D depth effect.
-
-    // First person camera toggle.
-    bool isFirstPerson = false;
-    
-    // Camera orbit variables.
-    float cameraAngleYaw = 0.0f;   // Horizontal rotation (Left/Right).
-    float cameraAnglePitch = 0.0f; // Vertical rotation (Up/Down).
     
     // Toggle to hide/show the controls UI.
     bool showControls = true;
@@ -144,7 +128,8 @@ int main(void) {
     // Initialize the Race System (The track and the referee) using the default level.
     RaceSystem race = InitRace(currentLevel);
 
-    // --- LEADERBOARD & TEXT INPUT SETUP ---
+    
+    // Leaderboard & text input setup.
     // We leave the leaderboard struct empty for now. 
     // It will be dynamically loaded when the player finishes a specific level.
     Leaderboard leaderboard = { 0 };
@@ -161,17 +146,20 @@ int main(void) {
     // Timer for continuous scrolling.
     float stickScrollTimer = 0.0f;
 
+
     // Analog Stick Latches.
     // These prevent the grid selection from flying at 60 slots per second 
     // when the player holds the analog stick in a direction.
     bool stickMovedX = false;
     bool stickMovedY = false;
 
+    // Timer for mouse double-clicks.
+    double lastClickTime = 0.0;
+
 
     // --- 2. THE MAIN GAME LOOP ---
     // This loop runs 60 times per second until the user clicks the X or presses ESC.
     while (!WindowShouldClose()) {
-        
         // --- 0) GLOBAL BACK / EXIT LOGIC ---
         // We handle the ESC key (Keyboard) and the View/Back button (Gamepad).
         if (IsKeyPressed(KEY_ESCAPE) || 
@@ -192,6 +180,7 @@ int main(void) {
                 break; 
             }
         }
+
 
         // --- A) UPDATE PHASE ---
         if (currentState == STATE_MENU) {
@@ -221,10 +210,14 @@ int main(void) {
             }
 
             // Reset the latches if the stick returns to the center (deadzone of 20%).
-            if (fabsf(leftStickX) < 0.2f) stickMovedX = false;
-            if (fabsf(leftStickY) < 0.2f) stickMovedY = false;
+            if (fabsf(leftStickX) < 0.2f) {
+                stickMovedX = false;
+            }
+            if (fabsf(leftStickY) < 0.2f) {
+                stickMovedY = false;
+            }
 
-            // Grid navigation logic (5x5) with strict Row/Column wrapping.
+            // Grid navigation logic (5x5) with strict row/column wrapping.
             int idx = currentLevel - 1;
             int row = idx / 5;
             int col = idx % 5;
@@ -259,6 +252,50 @@ int main(void) {
             }
             currentLevel = (row * 5) + col + 1;
             
+            // Mouse selection logic.
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                Vector2 mousePos = GetMousePosition();
+                
+                // We need to fetch the screen size here to recreate the grid math.
+                int screenWidth = GetScreenWidth();
+                int screenHeight = GetScreenHeight();
+                
+                int gridCols = 5;
+                float slotSize = 80.0f;
+                float padding = 20.0f;
+                float startX = (screenWidth - (gridCols * slotSize + (gridCols - 1) * padding)) / 2;
+                float startY = screenHeight * 0.3f;
+
+                // Loop through all 25 theoretical slots to check for a collision with the mouse.
+                for (int i = 0; i < 25; i++) {
+                    int row = i / gridCols;
+                    int col = i % gridCols;
+                    int levelNum = i + 1;
+
+                    // Recreate the exact bounding box of this specific level slot.
+                    Rectangle slotRect = { startX + col * (slotSize + padding), startY + row * (slotSize + padding), slotSize, slotSize };
+
+                    // If the mouse is inside the box and the level actually exists...
+                    if (CheckCollisionPointRec(mousePos, slotRect) && levelNum <= MAX_LEVELS) {
+                        if (currentLevel == levelNum) {
+                            // The level was already selected. Check for double-click (0.4 seconds window).
+                            if ((GetTime() - lastClickTime) < 0.4) {
+                                currentState = STATE_VEHICLE_SELECT; // Enter the level!
+                            } else {
+                                lastClickTime = GetTime(); // Too slow, reset the timer.
+                            }
+                        } else {
+                            // Single click on a new level: Select it.
+                            currentLevel = levelNum;
+                            lastClickTime = GetTime();
+                        }
+                        
+                        // Stop checking the rest of the grid since we already found the clicked slot.
+                        break; 
+                    }
+                }
+            }
+
             // Confirm level selection.
             if (IsKeyPressed(KEY_ENTER) || 
                (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) {
@@ -269,6 +306,9 @@ int main(void) {
             
         } else if (currentState == STATE_VEHICLE_SELECT) {
             UpdateMusicStream(menuMusic);
+            if (!IsMusicStreamPlaying(menuMusic)) {
+                PlayMusicStream(menuMusic);
+            }
             
             if (IsKeyPressed(KEY_ONE) || 
                (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
@@ -314,6 +354,9 @@ int main(void) {
             // We pass pointers to both the race and the player so the referee can check distances.
             UpdateRace(&race, &player);
 
+            // Update the camera (1st/3rd person logic and orbital math).
+            UpdateDynamicCamera(&camera, &player);
+
             // Dynamic audio logic
             if (player.type == VEHICLE_PLANE) {
                 // Mute helicopter if it was playing.
@@ -346,116 +389,6 @@ int main(void) {
                 float pitch = 1.0f + (player.velocity.y * 0.2f);
                 SetSoundPitch(helicopterSound, pitch);
             }
-            
-            // Dynamic logic camera.
-            // Toggle camera mode when pressing 'C' (Keyboard) or 'A' (Gamepad).
-            if (IsKeyPressed(KEY_C) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) {
-                isFirstPerson = !isFirstPerson;
-            }
-
-            if (!isFirstPerson) {
-                // Interpolation factor for smooth camera movement. Lower values create a more cinematic, delayed response.
-
-                if (IsGamepadAvailable(0)) {
-                    // Gamepad: Absolute positioning. The camera directly mirrors the physical tilt of the right thumbstick.
-                    float smoothFactor = 0.1f;
-
-                    float rightStickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X);
-                    float rightStickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y);
-
-                    // Deadzone check. Ignores tiny inputs to prevent camera jitter caused by hardware stick drift.
-                    if (fabsf(rightStickX) < 0.15f) {
-                        rightStickX = 0.0f;
-                    }
-                    if (fabsf(rightStickY) < 0.15f) {
-                        rightStickY = 0.0f;
-                    }
-
-                    // Calculate the target angle by multiplying the normalized stick input by the maximum allowed radians.
-                    float targetYaw = -rightStickX * 2.5f; 
-                    float targetPitch = rightStickY * 1.5f; 
-
-                    // Smoothly transition the current camera angle toward the target angle using Linear Interpolation (Lerp).
-                    cameraAngleYaw = Lerp(cameraAngleYaw, targetYaw, smoothFactor);
-                    cameraAnglePitch = Lerp(cameraAnglePitch, targetPitch, smoothFactor);
-                } else {
-                    // Keyboard: Relative positioning. The camera rotates continuously as long as the arrow keys are held down.
-                    float smoothFactor = 0.3f; 
-                    
-                    float targetYaw = cameraAngleYaw;
-                    float targetPitch = cameraAnglePitch;
-
-                    if (IsKeyDown(KEY_RIGHT)) {
-                        targetYaw -= 0.08f;
-                    }
-                    if (IsKeyDown(KEY_LEFT)) {
-                        targetYaw += 0.08f;
-                    }
-                    if (IsKeyDown(KEY_UP)) {
-                        targetPitch -= 0.08f;
-                    }
-                    if (IsKeyDown(KEY_DOWN)) {
-                        targetPitch += 0.08f;
-                    }
-
-                    // Auto-centering mechanism. Smoothly returns the target angle to 0.0 when no keys are pressed.
-                    if (!IsKeyDown(KEY_RIGHT) && !IsKeyDown(KEY_LEFT)) {
-                        targetYaw *= 0.90f;
-                    }
-                    if (!IsKeyDown(KEY_UP) && !IsKeyDown(KEY_DOWN)) {
-                        targetPitch *= 0.90f;
-                    }
-
-                    // Clamp the target angles to prevent the camera from rotating too far or clipping through the aircraft.
-                    if (targetPitch > 1.5f) {
-                        targetPitch = 1.5f;
-                    }
-                    if (targetPitch < -0.5f) {
-                        targetPitch = -0.5f;
-                    }
-                    if (targetYaw > 2.5f) {
-                        targetYaw = 2.5f;
-                    }
-                    if (targetYaw < -2.5f) {
-                        targetYaw = -2.5f;
-                    }
-
-                    // Apply the same Lerp transition used for the gamepad to maintain a consistent feel across input devices.
-                    cameraAngleYaw = Lerp(cameraAngleYaw, targetYaw, smoothFactor);
-                    cameraAnglePitch = Lerp(cameraAnglePitch, targetPitch, smoothFactor);
-                }
-            } else {
-                // Reset manual orbit angles when the player switches back to First Person view to ensure a clean transition.
-                cameraAngleYaw = player.rotation.y; 
-                cameraAnglePitch = 0.0f;
-            }
-
-            if (isFirstPerson) {
-                // 1st person (Cockpit).
-                // Place camera exactly at player's position, slightly elevated for eye level.
-                camera.position = (Vector3){ player.position.x, player.position.y + 0.5f, player.position.z };
-                
-                // Calculate exactly where the nose of the vehicle is pointing using trigonometry.
-                // (We use negative sine/cosine because moving forward means moving into -Z).
-                camera.target.x = camera.position.x - (sinf(player.rotation.y) * cosf(player.rotation.x));
-                camera.target.y = camera.position.y +  sinf(player.rotation.x); 
-                camera.target.z = camera.position.z - (cosf(player.rotation.y) * cosf(player.rotation.x));
-                
-            } else {
-                // 3rd person (Orbit chase camera).
-                camera.target = player.position;
-                float cameraDistance = 4.0f;
-                float cameraHeight = 1.5f; 
-
-                // Combine player rotation with manual orbit input.
-                float totalYaw = player.rotation.y + cameraAngleYaw;
-                float totalPitch = cameraAnglePitch;
-
-                // Spherical coordinates calculation.
-                camera.position.x = player.position.x + (sinf(totalYaw) * cosf(totalPitch) * cameraDistance);
-                camera.position.y = player.position.y + (sinf(totalPitch) * cameraDistance) + cameraHeight;
-                camera.position.z = player.position.z + (cosf(totalYaw) * cosf(totalPitch) * cameraDistance);
-            }
 
             // Check if the race is over and the 3-second victory screen has passed.
             if (race.isFinished && race.finishedTimer > 3.0f) {
@@ -477,7 +410,11 @@ int main(void) {
             }
         
         } else if (currentState == STATE_NAME_INPUT) {
-            
+            UpdateMusicStream(endingMusic);
+            if (!IsMusicStreamPlaying(endingMusic)) {
+                PlayMusicStream(endingMusic);
+            }
+
             // Keyboard logic (PC).
             // GetCharPressed() reads the keyboard queue character by character.
             int key = GetCharPressed();
@@ -567,29 +504,33 @@ int main(void) {
                 }
             }
             
-            // Submit name and save (ENTER or START),
-            if ((IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) && letterCount > 0) {
-                
-                // 1. Generate a dynamic filename based on the level just played,
+            // Submit name and save (ENTER or START).
+            if ((IsKeyPressed(KEY_ENTER) || 
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT))) && letterCount > 0) {
+                // 1. Generate a dynamic filename based on the level just played.
                 const char *filename = TextFormat("data/times_lvl%d.txt", currentLevel);
                 
-                // 2. Load, update, and save the specific leaderboard,
+                // 2. Load, update, and save the specific leaderboard.
                 leaderboard = LoadLeaderboard(filename);
                 AddLeaderboardEntry(&leaderboard, playerName, race.timer, player.type);
                 SaveLeaderboard(&leaderboard, filename);
                 
-                // 3. Proceed to the viewing screen,
+                // 3. Proceed to the viewing screen.
                 currentState = STATE_LEADERBOARD;
             }
             
         } else if (currentState == STATE_LEADERBOARD) {
-            
+            UpdateMusicStream(endingMusic);
+            if (!IsMusicStreamPlaying(endingMusic)) {
+                PlayMusicStream(endingMusic);
+            }
+
             // Wait strictly for ENTER (Keyboard) or 'B' (Gamepad) to return to the main menu.
-            if (IsKeyPressed(KEY_ENTER) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) {
+            if (IsKeyPressed(KEY_ENTER) ||
+               (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) {
                 currentState = STATE_LEVEL_SELECT;
             }
         }
-
 
         
         // --- B) DRAW PHASE (RENDERING) ---
@@ -597,370 +538,105 @@ int main(void) {
         BeginDrawing();
         
         // Wipe the previous frame clean with a sky blue color.
-        ClearBackground(SKYBLUE);
+        // We don't clear the background for the leaderboard because it has its own DARKBLUE background in ui.c.
+        if (currentState != STATE_LEADERBOARD) {
+            ClearBackground(SKYBLUE);
+        }
 
         // Global dynamic resolution
-        // We calculate the screen dimensions ONCE per frame, and share them across all states.
+        // We calculate the screen dimensions once per frame, and share them across all states.
         int screenWidth = GetScreenWidth();
         int screenHeight = GetScreenHeight();
 
-        if (currentState == STATE_MENU) {
-            // Main title.
-            const char *title = "SIMPLE FLIGHT SIMULATOR";
-            int titleWidth = MeasureText(title, 50); 
-            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.25f, 50, DARKBLUE);
-
-            const char *author = "by Benito Fernandez";
-            int authorWidth = MeasureText(author, 35);
-            DrawText(author, (screenWidth - authorWidth) / 2, screenHeight * 0.35f, 35, WHITE);
-
-            // Blinking start message.
-            const char *msg;
-            if (IsGamepadAvailable(0)) { 
-                msg = "PRESS [START] TO BEGIN";
-            } else {
-                msg = "PRESS [ENTER] TO BEGIN";
-            }
-            int msgWidth = MeasureText(msg, 30);
-            if ((int)(GetTime() * 2) % 2 == 0) DrawText(msg, (screenWidth - msgWidth) / 2, screenHeight * 0.6f, 30, GRAY);
-            
-        } else if (currentState == STATE_LEVEL_SELECT) {
-            // 1. Main screen title.
-            const char *title = "SELECT CIRCUIT";
-            int titleWidth = MeasureText(title, 40); 
-            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.1f, 40, DARKBLUE);
-            
-            // Create an empty string buffer to hold the name.
-            char currentName[50] = { 0 }; 
-            
-            // Ask race.c to open the file and fetch the name for us.
-            GetLevelName(currentLevel, currentName);
-            
-            // 2. Draw the current level number and its specific title.
-            const char *lvlText = TextFormat("< LEVEL %d: %s >", currentLevel, currentName);
-            int lvlWidth = MeasureText(lvlText, 30);
-            
-            // Color logic: Gold if the file exists (not restricted), Gray if it doesn't.
-            Color titleColor;
-            if (strcmp(currentName, "RESTRICTED AREA") != 0) {
-                titleColor = GOLD;
-            } else {
-                titleColor = GRAY;
-            }
-            DrawText(lvlText, (screenWidth - lvlWidth) / 2, screenHeight * 0.18f, 30, titleColor);
-            
-            // Level grid (5x5).
-            int gridCols = 5;
-            float slotSize = 80.0f;
-            float padding = 20.0f;
-            
-            // Calculate starting position to center the 5x5 grid.
-            float startX = (screenWidth - (gridCols * slotSize + (gridCols - 1) * padding)) / 2;
-            float startY = screenHeight * 0.3f;
-
-            for (int i = 0; i < 25; i++) { // 5x5 = 25 slots.
-                int row = i / gridCols;
-                int col = i % gridCols;
-                int levelNum = i + 1;
-
-                Rectangle slotRect = { startX + col * (slotSize + padding), startY + row * (slotSize + padding), slotSize, slotSize };
+        // A clean switch statement using ui.c.
+        switch (currentState) {
+            case STATE_MENU:
+                DrawMainMenu(screenWidth, screenHeight);
+                break;
                 
-                // Color logic: Gold if selected, Dark Blue if available, Gray if empty.
-                Color boxColor;
-                if (levelNum == currentLevel) {
-                    boxColor = GOLD;
-                } else if (levelNum <= MAX_LEVELS) {
-                    boxColor = DARKBLUE;
-                } else {
-                    boxColor = LIGHTGRAY;
-                }
+            case STATE_LEVEL_SELECT:
+                DrawLevelSelectScreen(currentLevel, MAX_LEVELS, screenWidth, screenHeight);
+                break;
                 
-                DrawRectangleRec(slotRect, boxColor);
-                DrawRectangleLinesEx(slotRect, 2, WHITE);
-
-                // Only draw number if the level exists.
-                if (levelNum <= MAX_LEVELS) {
-                    DrawText(TextFormat("%d", levelNum), slotRect.x + 30, slotRect.y + 25, 30, WHITE);
-                }
-            }
-
-            const char *msg;
-            if (IsGamepadAvailable(0)) {
-                msg = "D-PAD/LEFT STICK to navigate, [A] to confirm";
-            } else {
-                msg = "ARROWS to navigate, [ENTER] to confirm";
-            }
-            int msgWidth = MeasureText(msg, 20);
-            DrawText(msg, (screenWidth - msgWidth) / 2, screenHeight * 0.85f, 20, GRAY);
-            
-        } else if (currentState == STATE_VEHICLE_SELECT) {
-            const char *title = "SELECT AIRCRAFT";
-            int titleWidth = MeasureText(title, 40); 
-            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.25f, 40, DARKBLUE);
-            
-            const char *opt1;
-            const char *opt2;
-            if (IsGamepadAvailable(0)) {
-                opt1 = "Press [X] for SR-71 Blackbird";
-                opt2 = "Press [Y] for AH-64 Apache";
-            } else {
-                opt1 = "Press [1] for SR-71 Blackbird";
-                opt2 = "Press [2] for AH-64 Apache";
-            }
-
-            int opt1Width = MeasureText(opt1, 25); 
-            DrawText(opt1, (screenWidth - opt1Width) / 2, screenHeight * 0.45f, 25, DARKGRAY);
-            
-            int opt2Width = MeasureText(opt2, 25);
-            DrawText(opt2, (screenWidth - opt2Width) / 2, screenHeight * 0.52f, 25, DARKGRAY);
-            
-        } else if (currentState == STATE_PLAYING) {
-            
-            // Switch Raylib into 3D rendering mode using our camera.
-            BeginMode3D(camera);
+            case STATE_VEHICLE_SELECT:
+                DrawVehicleSelectScreen(screenWidth, screenHeight);
+                break;
                 
-                // We draw the skybox exactly where the camera is. 
-                // This creates the optical illusion that the sky is infinitely far away.
-                DrawModel(skyboxModel, camera.position, 3.0f, WHITE);
+            case STATE_PLAYING:
+                // --- 3D WORLD RENDERING ---
+                // Switch Raylib into 3D rendering mode using our camera.
+                BeginMode3D(camera);
+                    // 1. Draw the skybox exactly where the camera is. 
+                    DrawModel(skyboxModel, camera.position, 3.0f, WHITE);
 
-                // Infinite green grid.
-                // Draw a massive solid dark green plane to hide the skybox below.
-                // We place it exactly at Y = 0.0f. 
-                // The size is 10000x10000 units, which covers the entire visible horizon.
-                DrawPlane((Vector3){ player.position.x, 0.0f, player.position.z }, (Vector2){ 10000.0f, 10000.0f }, DARKGREEN);
+                    // 2. Infinite green grid trick.
+                    DrawPlane((Vector3){ player.position.x, 0.0f, player.position.z }, (Vector2){ 10000.0f, 10000.0f }, DARKGREEN);
 
-                // Draw the grid lines slightly above the plane (Y = 0.05f).
-                // If we draw them at exactly 0.0f, they will overlap with the solid plane 
-                // and cause a graphical glitch called "Z-fighting" (flickering).
-                float spacing = 50.0f; // Distance between each line in the grid.
-                int slices = 60;       // How many lines we draw in each direction.
+                    float spacing = 50.0f; 
+                    int slices = 60;       
 
-                // We find the nearest grid "intersection" to the player.
-                // By snapping the grid to the player's position, we create the optical illusion
-                // that the floor is infinite and smoothly follows the camera.
-                float snapX = (int)(player.position.x / spacing) * spacing;
-                float snapZ = (int)(player.position.z / spacing) * spacing;
+                    float snapX = (int)(player.position.x / spacing) * spacing;
+                    float snapZ = (int)(player.position.z / spacing) * spacing;
 
-                for (int i = -slices; i <= slices; i++) {
-                    float offset = i * spacing;
-                    float extent = slices * spacing;
+                    for (int i = -slices; i <= slices; i++) {
+                        float offset = i * spacing;
+                        float extent = slices * spacing;
+                        
+                        DrawLine3D((Vector3){ snapX + offset, 0.05f, snapZ - extent }, (Vector3){ snapX + offset, 0.05f, snapZ + extent }, LIME);
+                        DrawLine3D((Vector3){ snapX - extent, 0.05f, snapZ + offset }, (Vector3){ snapX + extent, 0.05f, snapZ + offset }, LIME);
+                    }
+
+                    // 3. Draw the floating 3D rings/helipads and the navigation arrow for the race.
+                    DrawRace3D(&race, &player);
+
+                    // 4. Draw the physical aircraft if we are in 3rd person (orbit) view.
+                    if (!player.isFirstPerson) {
+                        Model *currentModel;
+                        if (player.type == VEHICLE_PLANE) {
+                            currentModel = &planeModel;
+                        } else {
+                            currentModel = &helicopterModel;
+                        }
+                        
+                        Matrix baseTransform = currentModel->transform;
+                        Matrix matRoll  = MatrixRotateZ(player.rotation.z);
+                        Matrix matPitch = MatrixRotateX(player.rotation.x);
+                        Matrix matYaw   = MatrixRotateY(player.rotation.y);
+                        Matrix dynamicRotation = MatrixMultiply(MatrixMultiply(matRoll, matPitch), matYaw);
+                        
+                        currentModel->transform = MatrixMultiply(baseTransform, dynamicRotation);
+                        if (player.type == VEHICLE_PLANE) {
+                            DrawModel(*currentModel, player.position, 0.08f, WHITE); 
+                        } else if (player.type == VEHICLE_HELICOPTER) {
+                            DrawModel(*currentModel, player.position, 0.8f, WHITE);
+                        }
+                        currentModel->transform = baseTransform;
+                    }
+
+                    // 5. Draw smoke particles.
+                    for (int i = 0; i < MAX_PARTICLES; i++) {
+                        if (player.smoke[i].active) {
+                            Color smokeColor = Fade(WHITE, player.smoke[i].life * 0.6f);
+                            float size = 0.1f + ((1.0f - player.smoke[i].life) * 0.7f);
+                            DrawSphere(player.smoke[i].position, size, smokeColor);
+                        }
+                    }
                     
-                    // Draw lines along the Z axis (Forward/Backward)
-                    DrawLine3D((Vector3){ snapX + offset, 0.05f, snapZ - extent },
-                               (Vector3){ snapX + offset, 0.05f, snapZ + extent }, LIME);
-                               
-                    // Draw lines along the X axis (Left/Right)
-                    DrawLine3D((Vector3){ snapX - extent, 0.05f, snapZ + offset },
-                               (Vector3){ snapX + extent, 0.05f, snapZ + offset }, LIME);
-                }
+                EndMode3D(); // Switch back to 2D rendering mode.
 
-                // Draw the floating 3D rings and the navigation arrow for the race.
-                DrawRace3D(&race, &player);
-
-                // Decide which model to use.
-                Model *currentModel;
-                if (player.type == VEHICLE_PLANE) {
-                    currentModel = &planeModel;
-                } else {
-                    currentModel = &helicopterModel;
-                }
+                // --- 2D HUD RENDERING ---
+                // Call our unified HUD drawer from the UI module!
+                DrawHUD(&player, &race, showControls, screenWidth, screenHeight);
+                break;
                 
-                // 1. Save the model's base matrix.
-                Matrix baseTransform = currentModel->transform;
+            case STATE_NAME_INPUT:
+                // Pass the current virtual key character (using the index).
+                DrawNameInputScreen(playerName, virtualKeyboard[virtualKeyIndex], screenWidth, screenHeight);
+                break;
                 
-                // 2. Generate a dynamic rotation matrix (Strict aerospace order).
-                // By multiplying matrices individually (Roll -> Pitch -> Yaw), 
-                // we prevent the axes from mixing up when pressing multiple keys (Gimbal lock).
-                Matrix matRoll  = MatrixRotateZ(player.rotation.z);
-                Matrix matPitch = MatrixRotateX(player.rotation.x);
-                Matrix matYaw   = MatrixRotateY(player.rotation.y);
-                Matrix dynamicRotation = MatrixMultiply(MatrixMultiply(matRoll, matPitch), matYaw);
-                
-                // 3. Combine them and apply temporarily.
-                currentModel->transform = MatrixMultiply(baseTransform, dynamicRotation);
-                
-                // 4. Draw the 3D model.
-                if (!isFirstPerson) {
-                    if (player.type == VEHICLE_PLANE) {
-                        DrawModel(*currentModel, player.position, 0.08f, WHITE); 
-                    } else if (player.type == VEHICLE_HELICOPTER) {
-                        DrawModel(*currentModel, player.position, 0.8f, WHITE);
-                    }
-                }
-
-                // 5. Restore the base matrix.
-                currentModel->transform = baseTransform;
-
-                // 6. Draw smoke particles.
-                // We loop through the pool and draw a cube for every active particle.
-                for (int i = 0; i < MAX_PARTICLES; i++) {
-                    if (player.smoke[i].active) {
-                        
-                        // White with transparency (Max alpha of 0.6f so it's not fully opaque).
-                        Color smokeColor = Fade(WHITE, player.smoke[i].life * 0.6f);
-                        
-                        // Smaller size: Starts at 0.1 and grows up to 0.8.
-                        float size = 0.1f + ((1.0f - player.smoke[i].life) * 0.7f);
-                        
-                        DrawSphere(player.smoke[i].position, size, smokeColor);
-                    }
-                }
-                
-            EndMode3D(); // Switch back to 2D rendering mode.
-
-            // UI controls (Toggleable).
-            if (showControls) {
-                // 1. Top-left: Movement & Throttle.
-                if (IsGamepadAvailable(0)) {
-                    DrawTextOutlined("LT/RT: Throttle | Left Stick: Move", 20, 20, 20, LIGHTGRAY, 2);
-                } else {
-                    DrawTextOutlined("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 20, 20, 20, LIGHTGRAY, 2);
-                }
-
-                // 2. Top-right: Camera & Restart.
-                const char *camRestText;
-                if (IsGamepadAvailable(0)) {
-                    camRestText = "Right Stick: Camera | [B] Restart | [A] POV ";
-                } else {
-                    camRestText = "Arrows: Camera | [R] Restart | [C] POV";
-                }
-                int camRestWidth = MeasureText(camRestText, 20);
-                DrawTextOutlined(camRestText, screenWidth - camRestWidth - 20, 20, 20, LIGHTGRAY, 2);
-
-                // 3. Bottom right: Vehicle Switch.
-                const char *vehText;
-                if (IsGamepadAvailable(0)) {
-                    vehText = "[X]/[Y] Switch Aircraft";
-                } else {
-                    vehText = "[1]/[2] Switch Aircraft";
-                }
-                int vehWidth = MeasureText(vehText, 20);
-                DrawTextOutlined(vehText, screenWidth - vehWidth - 20, screenHeight - 60, 20, ORANGE, 2);
-            } else {
-                if (IsGamepadAvailable(0)) {
-                    DrawTextOutlined("Press [Menu] to show controls", 20, 20, 14, LIGHTGRAY, 1);
-                } else {
-                    DrawTextOutlined("Press [H] to show controls", 20, 20, 14, LIGHTGRAY, 1);
-                }
-            }
-
-            // Draw the race stopwatch and remaining rings on the screen (Centered).
-            DrawRaceUI(&race);
-
-            // Aeronautical HUD.
-            DrawTextOutlined(TextFormat("ALTITUDE: %.0f ft", player.position.y * 10.0f), 20, screenHeight - 100, 20, LIME, 2);
-
-            float maxThrottle;
-            if (player.type == VEHICLE_PLANE) {
-                maxThrottle = 0.8f;
-            } else {
-                maxThrottle = 0.4f;
-            }
-            int powerPercentage = (int)((-player.throttle / maxThrottle) * 100.0f);
-            DrawTextOutlined(TextFormat("POWER: %d %%", powerPercentage), 20, screenHeight - 60, 20, LIME, 2);
-
-        }  else if (currentState == STATE_NAME_INPUT) {
-            
-            // Name input acreen.
-            const char *title = "NEW FLIGHT RECORD!";
-            int titleWidth = MeasureText(title, 40);
-            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.15f, 40, GOLD);
-            
-            const char *prompt = "ENTER YOUR CALLSIGN, PILOT:";
-            int promptWidth = MeasureText(prompt, 30);
-            DrawText(prompt, (screenWidth - promptWidth) / 2, screenHeight * 0.35f, 30, WHITE);
-            
-            // Draw the actual name being typed inside a classic console-style bracket.
-            const char *nameDisplay = TextFormat("[ %s_ ]", playerName);
-            int nameWidth = MeasureText(nameDisplay, 40);
-            DrawText(nameDisplay, (screenWidth - nameWidth) / 2, screenHeight * 0.45f, 40, LIME);
-
-            // Input instructions.
-            // 1. Draw the virtual keyboard ONLY if the player is using a gamepad.
-            if (IsGamepadAvailable(0)) {
-                const char *virtualUI = TextFormat("<- [ %c ] ->", virtualKeyboard[virtualKeyIndex]);
-                int virtualWidth = MeasureText(virtualUI, 40);
-                DrawText(virtualUI, (screenWidth - virtualWidth) / 2, screenHeight * 0.60f, 40, ORANGE);
-            }
-            
-            // 2. Define the texts using a classic if-else based on the controller type.
-            const char *row1;
-            const char *row2;
-            const char *row3;
-
-            if (IsGamepadAvailable(0)) {
-                row1 = "LEFT STICK to Navigate";
-                row2 = "[A] Select Letter  |  [X] Delete";
-                row3 = "[START] Confirm";
-            } else {
-                row1 = "Type using your KEYBOARD";
-                row2 = "[BACKSPACE] Delete Letter";
-                row3 = "[ENTER] Confirm";
-            }
-
-            // 3. Draw the 3 rows ordered vertically.
-            int row1Width = MeasureText(row1, 20);
-            DrawText(row1, (screenWidth - row1Width) / 2, screenHeight * 0.70f, 20, GRAY);
-            
-            int row2Width = MeasureText(row2, 20);
-            DrawText(row2, (screenWidth - row2Width) / 2, screenHeight * 0.75f, 20, GRAY);
-            
-            // Classic blinking effect on the third row (Confirm).
-            if ((int)(GetTime() * 2) % 2 == 0) {
-                int row3Width = MeasureText(row3, 30);
-                DrawText(row3, (screenWidth - row3Width) / 2, screenHeight * 0.85f, 30, LIGHTGRAY);
-            }
-            
-        } else if (currentState == STATE_LEADERBOARD) {
-            // Leaderboard screen.
-            ClearBackground(DARKBLUE); // A different background to make it feel like a computer terminal.
-            
-            const char *title = "--- TOP 10 PILOTS ---";
-            int titleWidth = MeasureText(title, 40);
-            DrawText(title, (screenWidth - titleWidth) / 2, screenHeight * 0.1f, 40, GOLD);
-            
-            // Loop through the records and print them list-style.
-            int startY = screenHeight * 0.25f;
-            int spacing = 35;
-            
-            // Headers for the columns.
-            DrawText("PILOT", screenWidth * 0.2f, startY - 40, 20, GRAY);
-            DrawText("TIME", screenWidth * 0.5f, startY - 40, 20, GRAY);
-            DrawText("VEHICLE", screenWidth * 0.75f, startY - 40, 20, GRAY);
-
-            for (int i = 0; i < leaderboard.count; i++) {
-                // Format the strings.
-                const char *recordStr = TextFormat("%d. %s", i + 1, leaderboard.entries[i].name);
-                const char *timeStr = TextFormat("%.2f s", leaderboard.entries[i].time);
-                
-                // Determine the vehicle name.
-                const char *vehStr = "Unknown";
-                if (leaderboard.entries[i].vehicle == VEHICLE_PLANE) {
-                    vehStr = "Airplane";
-                } else if (leaderboard.entries[i].vehicle == VEHICLE_HELICOPTER) {
-                    vehStr = "Helicopter";
-                }
-                
-                // Draw Name (Left column).
-                DrawText(recordStr, screenWidth * 0.2f, startY + (i * spacing), 30, WHITE);
-                
-                // Draw Time (Center column).
-                DrawText(timeStr, screenWidth * 0.5f, startY + (i * spacing), 30, LIME);
-
-                // Draw Vehicle (Right column).
-                DrawText(vehStr, screenWidth * 0.75f, startY + (i * spacing), 30, SKYBLUE);
-            }
-            
-            // Dynamic instructions to exit based on connected hardware.
-            const char *exitText;
-            if (IsGamepadAvailable(0)) {
-                exitText = "PRESS [B] TO RETURN TO BASE";
-            } else {
-                exitText = "PRESS [ENTER] TO RETURN TO BASE";
-            }
-            
-            int exitWidth = MeasureText(exitText, 20);
-            DrawText(exitText, (screenWidth - exitWidth) / 2, screenHeight * 0.9f, 20, GRAY);
+            case STATE_LEADERBOARD:
+                DrawLeaderboardScreen(&leaderboard, screenWidth, screenHeight);
+                break;
         }
 
         EndDrawing(); // Tell Raylib we are done painting this frame, display it!
@@ -970,7 +646,7 @@ int main(void) {
     // --- 3. TEARDOWN (CLEANUP) ---
     // The loop is over (User closed the game). Time to clean up.
     UnloadGameResources(); // Our custom function to free RAM.
-    CloseAudioDevice();    // Close audio device AFTER unloading resources.
+    CloseAudioDevice();    // Close audio device after unloading resources.
     CloseWindow();         // Raylib's function to close the OS window safely.
     return 0;              // Tell Windows the program finished successfully.
 }

@@ -27,7 +27,7 @@
 typedef struct LeaderboardEntry {
     char name[MAX_NAME_LENGTH + 1]; // +1 to leave room for the invisible null-terminator '\0'.
     float time;                     // The total race time.
-    VehicleType vehicle;            // Player's vehicle type  
+    VehicleType vehicle;            // Player's vehicle type.
 } LeaderboardEntry;
 
 // The main system that holds the entire Top 10 list.

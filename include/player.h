@@ -53,6 +53,10 @@ typedef struct Player {
 
     VehicleType type;              // Stores whether the player chose the plane or the helicopter.
 
+    bool isFirstPerson;            // Toggles between cockpit view (true) and orbit view (false).
+    float cameraAngleYaw;          // Manual orbit camera horizontal angle.
+    float cameraAnglePitch;        // Manual orbit camera vertical angle.
+
     float smokeDelayTimer;         // Timer for vehicle's switching.
     Particle smoke[MAX_PARTICLES]; // Particle pool.
 } Player;
@@ -62,7 +66,6 @@ typedef struct Player {
 // These declarations tell the compiler the names of our functions and what parameters they take,
 // so it doesn't panic when we call them in main.c before defining what they actually do.
 
-// --- PLAYER FACTORY FUNCTION ---
 // Creates and returns a fully initialized Player structure ready for flight.
 // This function configures the unique physical properties of the chosen vehicle type,
 // and spawns it precisely at the level's designated coordinates and orientation.
@@ -76,5 +79,12 @@ Player InitPlayer(VehicleType type, Vector3 startPos, float startYaw);
 // update the copy, and destroy it, leaving our real player untouched.
 // By passing the memory address (*player), this function modifies the actual player in main.c.
 void UpdatePlayer(Player *player);
+
+// Calculates and returns the normalized 3D vector pointing exactly where the player's nose is facing.
+Vector3 GetPlayerForwardVector(Player *player);
+
+// Updates the camera position, target, and handles 1st/3rd person toggling.
+// It reads the gamepad/keyboard inputs to orbit around the player smoothly.
+void UpdateDynamicCamera(Camera3D *camera, Player *player);
 
 #endif // Ends the include guard

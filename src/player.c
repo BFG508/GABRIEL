@@ -15,16 +15,25 @@ Player InitPlayer(VehicleType type, Vector3 startPos, float startYaw) {
     // { 0 } is a great C trick to ensure no garbage data is left in memory.
     Player p = { 0 };
     
-    // Set the starting physical properties.
+    // --- 1. PHYSICAL PROPERTIES ---
+    // Set the starting physical properties based on the level data.
     p.position = startPos;
-    p.rotation = (Vector3){ 0.0f, startYaw, 0.0f }; // Set initial yaw
+    p.rotation = (Vector3){ 0.0f, startYaw, 0.0f }; // Set initial yaw (direction the nose is pointing).
     p.velocity = (Vector3){ 0.0f, 0.0f, 0.0f };     // Start completely stationary.
-    p.throttle = 0.0f;                              // Engine is at 0%.
-    p.acceleration = 0.010f;                        // Engine power per frame.
-    p.friction = 0.95f;                             // Air resistance/drag (loses 5% of speed per frame).
-    p.type = type;                                  // Assign the chosen vehicle model.
+
+    p.throttle = 0.0f;                              // Engine is at 0% power.
+    p.acceleration = 0.010f;                        // Engine power gained per frame when accelerating.
+    p.friction = 0.95f;                             // Air resistance/drag (loses 5% of vertical momentum per frame).
     
-    // Hand the finished package back to whoever called this function.
+    p.type = type;                                  // Assign the chosen vehicle model (Plane or Helicopter).
+    
+    // --- 2. CAMERA STATE ---
+    // Initialize the default camera perspective for the new flight.
+    p.isFirstPerson = false;                        // Default to the 3rd person orbit camera view.
+    p.cameraAngleYaw = 0.0f;                        // Reset the manual horizontal camera rotation.
+    p.cameraAnglePitch = 0.0f;                      // Reset the manual vertical camera rotation.
+
+    // Hand the finished package back to whoever called this function (passed by value).
     return p;
 }
 
@@ -173,12 +182,7 @@ void UpdatePlayer(Player *player) {
     // A) Forward Ray (Crashes): Detects mountains in front of the aircraft.
     Ray forwardRay = { 0 };
     forwardRay.position = player->position;
-
-    forwardRay.direction = (Vector3){ 
-        -sinf(player->rotation.y) * cosf(player->rotation.x), 
-         sinf(player->rotation.x), 
-        -cosf(player->rotation.y) * cosf(player->rotation.x) 
-    };
+    forwardRay.direction = GetPlayerForwardVector(player);
 
     // B) Satellite Ray (Ground detection): Shoots from 1000 units directly downwards.
     Ray downRay = { 0 };
@@ -326,4 +330,102 @@ void UpdatePlayer(Player *player) {
             }
         }
     }
+}
+
+
+// --- DYNAMIC CAMERA ---
+// Handles the mathematics for spherical orbit (3rd person) and cockpit view (1st person).
+void UpdateDynamicCamera(Camera3D *camera, Player *player) {
+    
+    // Toggle camera mode when pressing 'C' (Keyboard) or 'A' (Gamepad).
+    if (IsKeyPressed(KEY_C) || (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) {
+        player->isFirstPerson = !player->isFirstPerson;
+    }
+
+    if (!player->isFirstPerson) {
+        // --- 3RD PERSON ORBIT LOGIC ---
+        
+        if (IsGamepadAvailable(0)) {
+            // Gamepad: Absolute positioning based on right thumbstick tilt.
+            float smoothFactor = 0.1f;
+
+            float rightStickX = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X);
+            float rightStickY = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y);
+
+            // Deadzone check.
+            if (fabsf(rightStickX) < 0.15f) rightStickX = 0.0f;
+            if (fabsf(rightStickY) < 0.15f) rightStickY = 0.0f;
+
+            float targetYaw = -rightStickX * 2.5f; 
+            float targetPitch = rightStickY * 1.5f; 
+
+            player->cameraAngleYaw = Lerp(player->cameraAngleYaw, targetYaw, smoothFactor);
+            player->cameraAnglePitch = Lerp(player->cameraAnglePitch, targetPitch, smoothFactor);
+            
+        } else {
+            // Keyboard: Relative positioning using arrow keys.
+            float smoothFactor = 0.3f; 
+            
+            float targetYaw = player->cameraAngleYaw;
+            float targetPitch = player->cameraAnglePitch;
+
+            if (IsKeyDown(KEY_RIGHT)) targetYaw -= 0.08f;
+            if (IsKeyDown(KEY_LEFT))  targetYaw += 0.08f;
+            if (IsKeyDown(KEY_UP))    targetPitch -= 0.08f;
+            if (IsKeyDown(KEY_DOWN))  targetPitch += 0.08f;
+
+            // Auto-centering mechanism.
+            if (!IsKeyDown(KEY_RIGHT) && !IsKeyDown(KEY_LEFT)) targetYaw *= 0.90f;
+            if (!IsKeyDown(KEY_UP) && !IsKeyDown(KEY_DOWN))    targetPitch *= 0.90f;
+
+            // Clamp the target angles to prevent clipping.
+            if (targetPitch > 1.5f)  targetPitch = 1.5f;
+            if (targetPitch < -0.5f) targetPitch = -0.5f;
+            if (targetYaw > 2.5f)    targetYaw = 2.5f;
+            if (targetYaw < -2.5f)   targetYaw = -2.5f;
+
+            player->cameraAngleYaw = Lerp(player->cameraAngleYaw, targetYaw, smoothFactor);
+            player->cameraAnglePitch = Lerp(player->cameraAnglePitch, targetPitch, smoothFactor);
+        }
+    } else {
+        // Reset manual orbit angles when switching to First Person view for a clean transition.
+        player->cameraAngleYaw = player->rotation.y; 
+        player->cameraAnglePitch = 0.0f;
+    }
+
+    // --- APPLY CAMERA TRANSFORMATIONS ---
+    if (player->isFirstPerson) {
+        // 1st person (Cockpit).
+        camera->position = (Vector3){ player->position.x, player->position.y + 0.5f, player->position.z };
+        
+        // Calculate exactly where the nose of the vehicle is pointing using trigonometry.
+        camera->target.x = camera->position.x - (sinf(player->rotation.y) * cosf(player->rotation.x));
+        camera->target.y = camera->position.y +  sinf(player->rotation.x); 
+        camera->target.z = camera->position.z - (cosf(player->rotation.y) * cosf(player->rotation.x));
+        
+    } else {
+        // 3rd person (Orbit chase camera).
+        camera->target = player->position;
+        float cameraDistance = 4.0f;
+        float cameraHeight = 1.5f; 
+
+        // Combine player rotation with manual orbit input.
+        float totalYaw = player->rotation.y + player->cameraAngleYaw;
+        float totalPitch = player->cameraAnglePitch;
+
+        // Spherical coordinates calculation.
+        camera->position.x = player->position.x + (sinf(totalYaw) * cosf(totalPitch) * cameraDistance);
+        camera->position.y = player->position.y + (sinf(totalPitch) * cameraDistance) + cameraHeight;
+        camera->position.z = player->position.z + (cosf(totalYaw) * cosf(totalPitch) * cameraDistance);
+    }
+}
+
+
+// --- FORWARD VECTOR ---
+Vector3 GetPlayerForwardVector(Player *player) {
+    return (Vector3){ 
+        -sinf(player->rotation.y) * cosf(player->rotation.x), 
+         sinf(player->rotation.x), 
+        -cosf(player->rotation.y) * cosf(player->rotation.x) 
+    };
 }

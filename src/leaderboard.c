@@ -26,16 +26,32 @@ Leaderboard LoadLeaderboard(const char *filename) {
     // we just return the empty leaderboard.
     if (file != NULL) {
         // Read the first line: how many records are saved?
-        if (fscanf(file, "%d", &lb.count) == 1) {
+        int expectedCount = 0;
+        if (fscanf(file, "%d", &expectedCount) == 1) {
             
-            // Loop through the file and read each name and time.
-            for (int i = 0; i < lb.count; i++) {
-                // fscanf reads string (%s) and float (%f) separated by a space.
-                int vType;
-                fscanf(file, "%s %f %d", lb.entries[i].name, &lb.entries[i].time, &vType);
-                lb.entries[i].vehicle = (VehicleType)vType;
-                fscanf(file, "%s %f", lb.entries[i].name, &lb.entries[i].time);
+            // Safety measure: Never read more than our array can hold.
+            if (expectedCount > MAX_LEADERBOARD) {
+                expectedCount = MAX_LEADERBOARD;
             }
+
+            int actualValidRecords = 0;
+            
+            // Loop through the file and read each name, time, and vehicle.
+            for (int i = 0; i < expectedCount; i++) {
+                int vType;
+                
+                // We must check that fscanf successfully found exactly 3 items.
+                // We use %15s to prevent buffer overflows if a name in the text file is too long.
+                // If a line in the .txt is corrupted or empty, this prevents "Ghost users".
+                if (fscanf(file, "%15s %f %d", lb.entries[actualValidRecords].name, &lb.entries[actualValidRecords].time, &vType) == 3) {
+                    
+                    lb.entries[actualValidRecords].vehicle = (VehicleType)vType;
+                    actualValidRecords++; // Only increment if the read was 100% successful.
+                }
+            }
+            
+            // Overwrite the count with the number of unbroken records we actually managed to load.
+            lb.count = actualValidRecords;
         }
         
         // The Golden Rule of File I/O: Always close the file when done!
@@ -58,10 +74,10 @@ void SaveLeaderboard(Leaderboard *lb, const char *filename) {
     // or completely overwrite it if it does.
     FILE *file = fopen(filename, "w");
     
-    // Safety check: if the OS denies permission to create the file, we abort.
+    // Safety check: If the OS denies permission to create the file, we abort.
     if (file == NULL) return;
 
-    // Write the total number of records at the very top.
+    // Write the total number of valid records at the very top.
     fprintf(file, "%d\n", lb->count);
     
     // Loop through our array and write each entry line by line.
@@ -74,18 +90,19 @@ void SaveLeaderboard(Leaderboard *lb, const char *filename) {
 
 
 // --- ADD ENTRY FUNCTION ---
-// This is the core logic. It sorts the new time, drops the 11th place, and keeps the top 10.
+// Evaluates a new time, finds its proper sorted position (lowest to highest), 
+// shifts the slower times down, and inserts the new record. Multiple identical names are allowed.
 void AddLeaderboardEntry(Leaderboard *lb, const char *name, float time, VehicleType vehicle) {
     
-    // 1. Filtering.
-    // If the board is already full (10 entries) AND this new time is slower (greater) 
-    // than our absolute worst time (the one at index 9), we don't even bother.
+    // 1. Filtering worst times.
+    // If the board is full (10 entries) AND this new time is slower (greater) 
+    // than our absolute worst time (the one at index 9), we ignore it completely.
     if (lb->count == MAX_LEADERBOARD && time >= lb->entries[MAX_LEADERBOARD - 1].time) {
         return; 
     }
 
     // 2. Finding the right spot.
-    // We search from the top (index 0) downwards to find where this new time belongs.
+    // We search from the top (1st place) downwards to find where this new time belongs.
     int targetIndex = 0;
     while (targetIndex < lb->count && lb->entries[targetIndex].time < time) {
         targetIndex++;
@@ -93,7 +110,7 @@ void AddLeaderboardEntry(Leaderboard *lb, const char *name, float time, VehicleT
 
     // 3. Shifting losers down.
     // We must move everyone below 'targetIndex' down by one slot to make room.
-    // We start from the bottom (either the last item, or the 9th slot to drop the 10th).
+    // We start from the bottom (either the last empty item, or the 9th slot to drop the 10th).
     int startShiftIndex;
     if (lb->count < MAX_LEADERBOARD) {
         startShiftIndex = lb->count;
@@ -105,21 +122,30 @@ void AddLeaderboardEntry(Leaderboard *lb, const char *name, float time, VehicleT
         lb->entries[i] = lb->entries[i - 1]; // Copy the entry above into this slot.
     }
 
-    // 4. Inserting the champion.
-    // We copy the string safely to avoid buffer overflows (hackers trying to write beyond memory).
-    strncpy(lb->entries[targetIndex].name, name, MAX_NAME_LENGTH);
-    lb->entries[targetIndex].name[MAX_NAME_LENGTH] = '\0'; // Force the null-terminator just in case.
+    // 4. Data sanitization (Anti-ghost protocol).
+    // We copy the name into a temporary safe string.
+    char safeName[MAX_NAME_LENGTH + 1] = "UNKNOWN"; // Default fallback name.
     
-    lb->entries[targetIndex].time = time;
+    if (name != NULL && strlen(name) > 0) {
+        strncpy(safeName, name, MAX_NAME_LENGTH);
+        safeName[MAX_NAME_LENGTH] = '\0'; // Force the null-terminator.
+        
+        // C's fscanf gets confused by spaces. We must replace spaces with underscores.
+        for (int i = 0; i < strlen(safeName); i++) {
+            if (safeName[i] == ' ') {
+                safeName[i] = '_';
+            }
+        }
+    }
 
-    strncpy(lb->entries[targetIndex].name, name, MAX_NAME_LENGTH);
-    lb->entries[targetIndex].name[MAX_NAME_LENGTH] = '\0'; 
-    
+    // 5. Inserting the champion.
+    // Now that the data is clean, we assign it to the correct spot in the array.
+    strncpy(lb->entries[targetIndex].name, safeName, MAX_NAME_LENGTH + 1);
     lb->entries[targetIndex].time = time;
     lb->entries[targetIndex].vehicle = vehicle;
 
-    // 5. Update count.
-    // If the board wasn't full yet, we now have one more entry.
+    // 6. Update count.
+    // If the board wasn't full yet, we now have one more official entry.
     if (lb->count < MAX_LEADERBOARD) {
         lb->count++;
     }

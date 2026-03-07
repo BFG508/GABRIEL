@@ -31,6 +31,7 @@ extern Sound planeSound;        // Stores the jet engine sound effect.
 extern Sound helicopterSound;   // Stores the helicopter rotor sound effect.
 
 extern Music menuMusic;         // Stores the background music stream for the menu.
+extern Music endingMusic;       // Stores the ending music stream for the leaderboard.
 
 
 // --- FUNCTION PROTOTYPES ---
