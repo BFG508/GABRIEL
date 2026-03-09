@@ -141,12 +141,12 @@ void DrawHUD(Player *player, RaceSystem *race, bool showControls, int screenWidt
     if (showControls) {
         if (IsGamepadAvailable(0)) {
             DrawTextOutlined("LT/RT: Throttle | Left Stick: Move", 20, 20, 20, LIGHTGRAY, 2);
-            DrawTextOutlined("Right Stick: Camera | [B] Restart | [A] POV", screenWidth - 430, 20, 20, LIGHTGRAY, 2);
+            DrawTextOutlined("Right Stick: Camera | [B] Restart | [A] POV", screenWidth - 450, 20, 20, LIGHTGRAY, 2);
             DrawTextOutlined("[X]/[Y] Switch Aircraft", screenWidth - 250, screenHeight - 60, 20, ORANGE, 2);
         } else {
             DrawTextOutlined("W/S: Throttle | A/D: Yaw/Roll | SPACE/SHIFT: Pitch", 20, 20, 20, LIGHTGRAY, 2);
-            DrawTextOutlined("Arrows: Camera | [R] Restart | [C] POV", screenWidth - 400, 20, 20, LIGHTGRAY, 2);
-            DrawTextOutlined("[1]/[2] Switch Aircraft", screenWidth - 250, screenHeight - 60, 20, ORANGE, 2);
+            DrawTextOutlined("Arrows: Camera | [R] Restart | [C] POV", screenWidth - 410, 20, 20, LIGHTGRAY, 2);
+            DrawTextOutlined("[1]/[2] Switch Aircraft", screenWidth - 250, screenHeight - 55, 20, ORANGE, 2);
         }
     } else {
         const char *msg;

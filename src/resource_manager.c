@@ -52,14 +52,14 @@ void LoadGameResources(void) {
     SetSoundVolume(planeSound, 1.30f);
 
     helicopterSound = LoadSound("resources/sounds/helicopter.wav");
-    SetSoundVolume(helicopterSound, 0.50f);
+    SetSoundVolume(helicopterSound, 0.45f);
 
 
     menuMusic = LoadMusicStream("resources/sounds/menu.mp3");
     SetMusicVolume(menuMusic, 0.55f);
 
     endingMusic = LoadMusicStream("resources/sounds/ending.mp3");
-    SetMusicVolume(endingMusic, 0.55f);
+    SetMusicVolume(endingMusic, 0.75);
 }
 
 

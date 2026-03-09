@@ -13,9 +13,59 @@
 // It checks the player's 3D coordinates, throttle, and kinetic energy to determine a safe touchdown.
 void UpdateMissionLanding(RaceSystem *race, Player *player) {
     
-    // --- 1. CALCULATE TELEMETRY DATA ---
+    // --- 0. DYNAMIC PAD MOVEMENT ---
+    float dt = GetFrameTime();
     
-    // Calculate the 2D horizontal distance (ignoring altitude) to see if we are over the pad.
+    if (race->padMoveType == 1) {
+        // --- LINEAR MOVEMENT ---
+        race->currentPadSpeed += race->padAccel * dt;
+        Vector3 dir = Vector3Normalize(race->padVelocity);
+        
+        if (Vector3Length(race->padVelocity) == 0) dir = (Vector3){1.0f, 0.0f, 0.0f}; 
+        
+        race->landingZone.x += dir.x * race->currentPadSpeed * dt;
+        race->landingZone.y += dir.y * race->currentPadSpeed * dt;
+        race->landingZone.z += dir.z * race->currentPadSpeed * dt;
+        
+    } else if (race->padMoveType == 2) {
+        // --- CIRCULAR MOVEMENT (ORBIT) ---
+        race->currentPadSpeed += race->padAccel * dt;
+        
+        if (race->padRadius > 0.0f) {
+            float angularVel = race->currentPadSpeed / race->padRadius;
+            race->currentPadAngle += angularVel * dt;
+            
+            race->landingZone.x = race->padOrigin.x + cosf(race->currentPadAngle) * race->padRadius;
+            race->landingZone.z = race->padOrigin.z + sinf(race->currentPadAngle) * race->padRadius;
+            race->landingZone.y = race->padOrigin.y; 
+        }
+    }
+
+
+    // --- 1. CALCULATE TELEMETRY DATA (RELATIVE PHYSICS) ---
+    // A) Pad's velocity vector.
+    Vector3 padVelVector = { 0.0f, 0.0f, 0.0f };
+    
+    if (race->padMoveType == 1) {
+        Vector3 dir = Vector3Normalize(race->padVelocity);
+        if (Vector3Length(race->padVelocity) == 0) dir = (Vector3){1.0f, 0.0f, 0.0f};
+        padVelVector = Vector3Scale(dir, race->currentPadSpeed);
+    } 
+    else if (race->padMoveType == 2 && race->padRadius > 0.0f) {
+        padVelVector.x = -sinf(race->currentPadAngle) * race->currentPadSpeed;
+        padVelVector.z =  cosf(race->currentPadAngle) * race->currentPadSpeed;
+    }
+
+    // B) Real world speed conversion (60 frames per second).
+    Vector3 playerVelPerSec = Vector3Scale(player->velocity, 60.0f);
+
+    // C) Relative speed separation (CRITICAL FIX).
+    // We separate the speed into downward force (Sink Rate) and sliding force (Horizontal).
+    Vector3 relativeVelocity = Vector3Subtract(playerVelPerSec, padVelVector);
+    float verticalImpact = fabsf(relativeVelocity.y); 
+    float horizontalSlip = Vector2Length((Vector2){relativeVelocity.x, relativeVelocity.z});
+
+    // D) Distances
     Vector2 playerPos2D = { player->position.x, player->position.z };
     Vector2 padPos2D = { race->landingZone.x, race->landingZone.z };
     float horizontalDistance = Vector2Distance(playerPos2D, padPos2D);
@@ -23,45 +73,53 @@ void UpdateMissionLanding(RaceSystem *race, Player *player) {
     // Calculate vertical distance (Altitude directly above the landing pad).
     float altitude = player->position.y - race->landingZone.y;
 
-    // Calculate the true kinetic speed (magnitude of the 3D velocity vector).
-    // This accounts for both falling too fast (sink rate) and moving forward too fast.
-    float currentSpeed = Vector3Length(player->velocity);
-
-
-    // --- 2. EVALUATE LANDING CONDITIONS ---
-    
-    // Condition A: Is the aircraft hovering inside the mathematical radius of the landing zone?
+    bool isTouchingGround = (altitude <= 1.0f && altitude >= -1.0f);
     bool isAbovePad = (horizontalDistance <= race->landingRadius);
 
-    // Condition B: Are the landing gears touching the ground? 
-    // We assume the aircraft's center of mass is about 0.5f units above the ground when landed.
-    bool isTouchingGround = (altitude <= 1.0f);
 
-    // Condition C: Is the aircraft moving slowly enough to survive the impact?
-    bool isSpeedSafe = (currentSpeed <= race->maxLandingSpeed);
-
-    // Condition D: Has the pilot cut the engine power?
-    // We require the throttle to be practically zero to consider the flight "concluded".
-    bool isEngineIdle = (player->throttle <= 0.05f);
-
-
-    // --- 3. DECLARE VICTORY ---
-    // If all conditions are met simultaneously, the landing is successful!
-    if (isAbovePad && isTouchingGround && isSpeedSafe && isEngineIdle) {
-        race->isFinished = true;
-        race->isRaceActive = false;
+    // --- 2. ANTI-CHEAT & EVALUATION (THE BLACK BOX) ---
+    // IMMEDIATE RETURN: This completely stops a crashed plane from generating a "Victory" 
+    // state while sliding on the ground, preventing the Name Input screen from showing up.
+    if (race->missionFailed || race->isFinished) {
+        return;
     }
+
+    // We evaluate the exact moment the aircraft's landing gears touch the ground.
+    if (isTouchingGround) {
+        
+        // Failure 1: The "Off-Road" check. Missed the pad entirely.
+        if (!isAbovePad) {
+            race->missionFailed = true;
+        }
+        
+        // Failure 2: Vertical structural failure (Slammed into the ground too hard).
+        // We check 'prevSpeed' which stores the vertical descent rate of the previous frame.
+        else if (race->prevSpeed > race->maxLandingSpeed) {
+            race->missionFailed = true;
+        }
+        
+        // Failure 3: Landing gear collapse (Sliding horizontally too fast relative to the pad).
+        // We give a generous 3.0x multiplier to the limit so airplanes can touch down and brake.
+        else if (horizontalSlip > race->maxLandingSpeed * 3.0f) {
+            race->missionFailed = true;
+        }
+        
+        // Success: Safe touchdown!
+        else {
+            race->isFinished = true;
+            race->isRaceActive = false;
+        }
+    }
+    
+    // Store this frame's vertical sink rate for the next frame's impact evaluation.
+    race->prevSpeed = verticalImpact;
 }
 
 
 // --- RENDERING FUNCTION (3D WORLD) ---
 // This draws exclusively the landing pad geometry and the navigation arrow.
 void DrawMissionLanding3D(RaceSystem *race, Player *player) {
-    
-    if (race->isRaceActive) {
-        
-        // --- 1. DRAW A HIGH-CONTRAST LANDING PAD ---
-        // Base layer: A bright safety orange outer border to clearly separate it from the ground.
+    if (race->isRaceActive || race->missionFailed) { 
         DrawCylinder(race->landingZone, race->landingRadius, race->landingRadius, 0.5f, 32, ORANGE);
         
         // Middle layer: A solid white concrete area so it stands out against dark terrain.
@@ -74,9 +132,9 @@ void DrawMissionLanding3D(RaceSystem *race, Player *player) {
         Vector3 bullseye = { race->landingZone.x, race->landingZone.y + 0.2f, race->landingZone.z };
         DrawCylinder(bullseye, race->landingRadius * 0.2f, race->landingRadius * 0.2f, 0.5f, 16, RED);
 
-        // --- 2. VECTORIAL HUD ARROW (CHEVRON) ---
-        // We reuse the high-tech wireframe arrow, but now it points to the landing zone.
-        DrawNavArrow(player, race->landingZone);
+        if (!race->missionFailed) {
+            DrawNavArrow(player, race->landingZone);
+        }
     }
 }
 
@@ -87,20 +145,40 @@ void DrawMissionLandingUI(RaceSystem *race) {
     int screenWidth = GetScreenWidth();
     int screenHeight = GetScreenHeight();
     
-    if (race->isRaceActive) {
-        // 1. Draw the global stopwatch at 5% from the top.
+    if (race->missionFailed) {
+        // --- MISSION FAILED SCREEN ---
+        const char *failText = "CRASH LANDING! MISSION FAILED";
+        int failWidth = MeasureText(failText, 40);
+        DrawTextOutlined(failText, (screenWidth - failWidth) / 2, screenHeight * 0.4f, 40, RED, 2);
+        
+        // Dynamic Restart Instructions based on hardware.
+        const char *restText;
+        if (IsGamepadAvailable(0)) {
+            restText = "Press [B] to Restart";
+        } else {
+            restText = "Press [R] to Restart";
+        }
+        
+        int restWidth = MeasureText(restText, 30);
+        DrawTextOutlined(restText, (screenWidth - restWidth) / 2, screenHeight * 0.5f, 30, GRAY, 2);
+        
+    } else if (race->isRaceActive) {
+        // --- NORMAL HUD ---
         const char *timerText = TextFormat("MISSION TIME: %.2f", race->timer);
         int timerWidth = MeasureText(timerText, 30);
         DrawTextOutlined(timerText, (screenWidth - timerWidth) / 2, screenHeight * 0.05f, 30, WHITE, 2);
 
-        // 2. Draw the objective status at 10% from the top.
-        const char *objText = "OBJECTIVE: SAFE TOUCHDOWN";
+        const char *objText;
+        if (race->padMoveType > 0) {
+            objText = "OBJECTIVE: LAND ON MOVING CARRIER";
+        } else {
+            objText = "OBJECTIVE: SAFE TOUCHDOWN";
+        }
         int objWidth = MeasureText(objText, 20);
         DrawTextOutlined(objText, (screenWidth - objWidth) / 2, screenHeight * 0.10f, 20, GOLD, 2);    
-    }
-    
-    // Only draw the victory message if less than 3 seconds have passed.
-    else if (race->isFinished && race->finishedTimer < 3.0f) {
+        
+    } else if (race->isFinished && race->finishedTimer < 3.0f) {
+        // --- VICTORY SCREEN ---
         const char *winText = "PERFECT LANDING!";
         int winWidth = MeasureText(winText, 40);
         DrawTextOutlined(winText, (screenWidth - winWidth) / 2, screenHeight * 0.4f, 40, GOLD, 2);

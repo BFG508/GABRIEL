@@ -40,6 +40,17 @@ typedef struct RaceSystem {
     Vector3 landingZone;   // Coordinates for the center of the landing pad.
     float landingRadius;   // The size of the safe landing area (collision size).
     float maxLandingSpeed; // Maximum vertical/forward speed allowed to not crash on touchdown.
+
+    int padMoveType;       // 0 = Static, 1 = Linear, 2 = Circular.
+    Vector3 padOrigin;     // Mathematical center for circular movement.
+    Vector3 padVelocity;   // Direction vector and base speed magnitude.
+    float padAccel;        // Continuous acceleration applied every frame.
+    float currentPadSpeed; // Tracks the dynamically changing speed.
+    float currentPadAngle; // Tracks the current rotation angle for circular paths.
+    float padRadius;       // Distance from the origin for circular paths.
+    
+    float prevSpeed;       // Stores the vehicle's speed from the previous frame to detect crashes.
+    bool missionFailed;    // True if the player crashed or slammed into the ground.
 } RaceSystem;
 
 

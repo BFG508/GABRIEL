@@ -139,12 +139,16 @@ int main(void) {
 
     // Variables for the gamepad virtual keyboard (Arcade style input).
     // This allows players without a physical keyboard to enter their names.
-    const char virtualKeyboard[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ ";
+    const char virtualKeyboard[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
     int virtualKeyboardLen = 37;
     int virtualKeyIndex = 0;
 
     // Timer for continuous scrolling.
     float stickScrollTimer = 0.0f;
+
+    // Timers and latches for continuous deleting (Gamepad).
+    float deleteTimer = 0.0f;
+    bool deleteFirstPress = false;
 
 
     // Analog Stick Latches.
@@ -326,7 +330,6 @@ int main(void) {
             }
             
         } else if (currentState == STATE_PLAYING) {
-
             // Mid-flight vehicle switching.
             if (IsKeyPressed(KEY_ONE) || 
                (IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
@@ -357,37 +360,45 @@ int main(void) {
             // Update the camera (1st/3rd person logic and orbital math).
             UpdateDynamicCamera(&camera, &player);
 
-            // Dynamic audio logic
-            if (player.type == VEHICLE_PLANE) {
-                // Mute helicopter if it was playing.
-                if (IsSoundPlaying(helicopterSound)) {
-                    StopSound(helicopterSound);
+            // Dynamic audio logic.
+            // We only play engine sounds if the vehicle is still intact!
+            if (race.missionFailed) {
+                // Force complete silence on crash
+                if (IsSoundPlaying(planeSound)) StopSound(planeSound);
+                if (IsSoundPlaying(helicopterSound)) StopSound(helicopterSound);
+            }
+            else {
+                if (player.type == VEHICLE_PLANE) {
+                    // Mute helicopter if it was playing.
+                    if (IsSoundPlaying(helicopterSound)) {
+                        StopSound(helicopterSound);
+                    }
+                    
+                    // Ensure the plane engine sound is looping.
+                    if (!IsSoundPlaying(planeSound)) {
+                        PlaySound(planeSound);
+                    }
+                    
+                    // Modify the pitch based on the throttle.
+                    // Throttle is negative when moving forward, so we invert it.
+                    float pitch = 1.0f + (-player.throttle * 0.8f);
+                    SetSoundPitch(planeSound, pitch);
+                    
+                } else if (player.type == VEHICLE_HELICOPTER) {
+                    // Mute plane if it was playing.
+                    if (IsSoundPlaying(planeSound)) {
+                        StopSound(planeSound);
+                    }
+                    
+                    // Ensure the helicopter rotor sound is looping.
+                    if (!IsSoundPlaying(helicopterSound)) {
+                        PlaySound(helicopterSound);
+                    }
+                    
+                    // The helicopter changes pitch slightly when ascending or descending.
+                    float pitch = 1.0f + (player.velocity.y * 0.2f);
+                    SetSoundPitch(helicopterSound, pitch);
                 }
-                
-                // Ensure the plane engine sound is looping.
-                if (!IsSoundPlaying(planeSound)) {
-                    PlaySound(planeSound);
-                }
-                
-                // Modify the pitch based on the throttle.
-                // Throttle is negative when moving forward, so we invert it.
-                float pitch = 1.0f + (-player.throttle * 0.8f);
-                SetSoundPitch(planeSound, pitch);
-                
-            } else if (player.type == VEHICLE_HELICOPTER) {
-                // Mute plane if it was playing.
-                if (IsSoundPlaying(planeSound)) {
-                    StopSound(planeSound);
-                }
-                
-                // Ensure the helicopter rotor sound is looping.
-                if (!IsSoundPlaying(helicopterSound)) {
-                    PlaySound(helicopterSound);
-                }
-                
-                // The helicopter changes pitch slightly when ascending or descending.
-                float pitch = 1.0f + (player.velocity.y * 0.2f);
-                SetSoundPitch(helicopterSound, pitch);
             }
 
             // Check if the race is over and the 3-second victory screen has passed.
@@ -438,9 +449,9 @@ int main(void) {
                 }
                 key = GetCharPressed(); 
             }
-            
+
             // Handle backspace to delete characters.
-            if (IsKeyPressed(KEY_BACKSPACE)) {
+            if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) {
                 letterCount--;
                 if (letterCount < 0) letterCount = 0;
                 playerName[letterCount] = '\0';
@@ -497,10 +508,31 @@ int main(void) {
                 }
                 
                 // Delete letter (Button B).
-                if (IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) {
-                    letterCount--;
-                    if (letterCount < 0) letterCount = 0;
-                    playerName[letterCount] = '\0';
+                if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) {
+                    if (!deleteFirstPress) {
+                        // 1. Initial immediate delete (The first 'click').
+                        letterCount--;
+                        if (letterCount < 0) letterCount = 0;
+                        playerName[letterCount] = '\0';
+                        
+                        deleteFirstPress = true;
+                        deleteTimer = -0.4f; // Initial delay before rapid-fire starts (0.4 seconds).
+                    } else {
+                        // 2. Continuous delete while held down.
+                        deleteTimer += GetFrameTime();
+                        
+                        // Speed of the deletion (0.08f = extremely fast rapid fire).
+                        if (deleteTimer > 0.08f) {
+                            letterCount--;
+                            if (letterCount < 0) letterCount = 0;
+                            playerName[letterCount] = '\0';
+                            
+                            deleteTimer = 0.0f; // Reset timer for the next letter deletion.
+                        }
+                    }
+                } else {
+                    // Button released, reset the latch.
+                    deleteFirstPress = false;
                 }
             }
             

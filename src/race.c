@@ -123,11 +123,36 @@ RaceSystem InitRace(int levelID) {
         // BRANCH 1: PRECISION LANDING PARSING
         else if (race.missionType == 1) {
             
-            // Read the exact 3D coordinates of the helipad's center (X, Y, Z).
+            // 1. Read the standard parameters (Position, Radius, Tolerances).
             fscanf(file, "%f %f %f", &race.landingZone.x, &race.landingZone.y, &race.landingZone.z);
-            
-            // Read the physical radius of the safe zone and the maximum safe speed allowed for touchdown.
             fscanf(file, "%f %f", &race.landingRadius, &race.maxLandingSpeed);
+
+            // 2. Read the new dynamic movement parameters (if they exist).
+            // Format: MoveType, OriginX, OriginY, OriginZ, VelX, VelY, VelZ, Acceleration
+            int readCount = fscanf(file, "%d %f %f %f %f %f %f %f", 
+                &race.padMoveType, 
+                &race.padOrigin.x, &race.padOrigin.y, &race.padOrigin.z,
+                &race.padVelocity.x, &race.padVelocity.y, &race.padVelocity.z,
+                &race.padAccel);
+
+            // If the file is old and doesn't have these numbers, fallback to STATIC.
+            if (readCount < 8) {
+                race.padMoveType = 0; 
+            } else {
+                // Initialize physics variables.
+                race.currentPadSpeed = Vector3Length(race.padVelocity);
+                
+                if (race.padMoveType == 2) {
+                    // For Circular: Radius is the distance from the defined origin to the starting zone.
+                    race.padRadius = Vector3Distance(race.landingZone, race.padOrigin);
+                    // Find the starting angle on the XZ plane.
+                    race.currentPadAngle = atan2f(race.landingZone.z - race.padOrigin.z, race.landingZone.x - race.padOrigin.x);
+                }
+            }
+            
+            // Initialize anti-crash variables.
+            race.prevSpeed = 0.0f;
+            race.missionFailed = false;
         }
         
         // Always close the file when you are done to free Operating System memory resources.
