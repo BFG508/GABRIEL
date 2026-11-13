@@ -13,6 +13,7 @@
 // These act as the "Workers" while race.h acts as the "Director".
 #include "mission_rings.h"
 #include "mission_landing.h"
+#include "mission_restricted.h"
 
 
 // --- DATA STRUCTURES ---
@@ -51,6 +52,16 @@ typedef struct RaceSystem {
     
     float prevSpeed;       // Stores the vehicle's speed from the previous frame to detect crashes.
     bool missionFailed;    // True if the player crashed or slammed into the ground.
+
+    // --- MISSION TYPE 2: RESTRICTED FLIGHT DATA ---
+    float targetSurvivalTime;  // How many seconds the player must survive to win.
+    float currentSurvivalTime; // Counter for the survival time successfully completed so far.
+    float maxAltitude;         // Radar ceiling. If player.y > maxAltitude, mission failed.
+    Vector3 windForce;         // Wind vector pushed against the player continuously.
+    Vector3 pathPoints[MAX_PATH_POINTS]; // Nodes defining the center of the safe corridor.
+    int numPathPoints;         // Total number of nodes read from the level file.
+    float pathWidth;           // Safe distance allowed from the center line of the path.
+    int currentWaypoint;       // Target node for the navigation arrow.
 } RaceSystem;
 
 

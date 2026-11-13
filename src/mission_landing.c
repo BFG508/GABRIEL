@@ -119,19 +119,29 @@ void UpdateMissionLanding(RaceSystem *race, Player *player) {
 // --- RENDERING FUNCTION (3D WORLD) ---
 // This draws exclusively the landing pad geometry and the navigation arrow.
 void DrawMissionLanding3D(RaceSystem *race, Player *player) {
+    // We keep drawing the pad even if the mission failed so the player can see where they crashed.
     if (race->isRaceActive || race->missionFailed) { 
-        DrawCylinder(race->landingZone, race->landingRadius, race->landingRadius, 0.5f, 32, ORANGE);
         
-        // Middle layer: A solid white concrete area so it stands out against dark terrain.
-        // We lift it by 0.1f on the Y-axis to prevent "Z-fighting" (flickering textures).
-        Vector3 midLayer = { race->landingZone.x, race->landingZone.y + 0.1f, race->landingZone.z };
-        DrawCylinder(midLayer, race->landingRadius * 0.9f, race->landingRadius * 0.9f, 0.5f, 32, RAYWHITE);
+        // We define the 5 classic colors of a target from the outside to the center (bullseye).
+        int numRings = 5;
+        Color targetColors[5] = { BLACK, RAYWHITE, SKYBLUE, RED, GOLD }; 
         
-        // Top layer: A red bullseye to mark the exact mathematical center of the landing zone.
-        // Lifted by 0.2f to sit perfectly on top of the white layer.
-        Vector3 bullseye = { race->landingZone.x, race->landingZone.y + 0.2f, race->landingZone.z };
-        DrawCylinder(bullseye, race->landingRadius * 0.2f, race->landingRadius * 0.2f, 0.5f, 16, RED);
+        // Loop through the 5 rings to draw them on top of each other.
+        for (int i = 0; i < numRings; i++) {
+            
+            // Calculate the radius scale for this specific layer (100%, 80%, 60%, 40%, 20%).
+            float scale = 1.0f - (i * 0.2f);
+            float currentRadius = race->landingRadius * scale;
+            
+            // We lift each inner ring slightly higher on the Y-axis (+0.05f per ring).
+            // This creates a microscopic stepped pyramid, completely preventing "Z-fighting" (flickering).
+            Vector3 layerPos = { race->landingZone.x, race->landingZone.y + (i * 0.05f), race->landingZone.z };
+            
+            // Draw the 3D cylinder for this specific colored ring.
+            DrawCylinder(layerPos, currentRadius, currentRadius, 0.5f, 32, targetColors[i]);
+        }
 
+        // Draw the 3D holographic navigation arrow pointing to the pad (hide it if crashed).
         if (!race->missionFailed) {
             DrawNavArrow(player, race->landingZone);
         }

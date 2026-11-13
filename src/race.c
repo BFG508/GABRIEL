@@ -9,6 +9,7 @@
 #include "race.h"
 #include "mission_rings.h"
 #include "mission_landing.h"
+#include "mission_restricted.h"
 
 
 // --- OUTLINED TEXT ---
@@ -154,6 +155,34 @@ RaceSystem InitRace(int levelID) {
             race.prevSpeed = 0.0f;
             race.missionFailed = false;
         }
+
+        // BRANCH 2: RESTRICTED FLIGHT PARSING ---
+        else if (race.missionType == 2) {
+            
+            // 1. Read the standard rules for the restricted airspace.
+            // Format: TargetTime, MaxAltitude, WindX, WindY, WindZ, PathWidth, NumWaypoints
+            fscanf(file, "%f %f %f %f %f %f %d", 
+                &race.targetSurvivalTime, &race.maxAltitude,
+                &race.windForce.x, &race.windForce.y, &race.windForce.z,
+                &race.pathWidth, &race.numPathPoints);
+
+            // Safety Check: Prevent array overflow if the level designer put too many waypoints.
+            if (race.numPathPoints > MAX_PATH_POINTS) {
+                race.numPathPoints = MAX_PATH_POINTS;
+            }
+
+            // 2. Loop through all remaining lines to build the 3D corridor nodes.
+            // Each line will have an X, Y, and Z coordinate for the center of the safe zone.
+            for (int i = 0; i < race.numPathPoints; i++) {
+                fscanf(file, "%f %f %f", 
+                    &race.pathPoints[i].x, &race.pathPoints[i].y, &race.pathPoints[i].z);
+            }
+
+            // Initialize mission progress variables for a fresh start.
+            race.currentSurvivalTime = 0.0f;
+            race.currentWaypoint = 0;
+            race.prevSpeed = 0.0f; 
+        }
         
         // Always close the file when you are done to free Operating System memory resources.
         fclose(file);
@@ -195,6 +224,11 @@ void UpdateRace(RaceSystem *race, Player *player) {
             // Hand over control to the Landing module.
             UpdateMissionLanding(race, player);
             break;
+
+        case 2:
+            // Hand over control to the Restricted module.
+            UpdateMissionRestricted(race, player);
+            break;
             
         default:
             // Unknown mission type, do nothing.
@@ -216,6 +250,10 @@ void DrawRace3D(RaceSystem *race, Player *player) {
         case 1:
             DrawMissionLanding3D(race, player);
             break;
+
+        case 2: 
+            DrawMissionRestricted3D(race, player); 
+            break;
     }
 }
 
@@ -232,6 +270,10 @@ void DrawRaceUI(RaceSystem *race) {
             
         case 1:
             DrawMissionLandingUI(race);
+            break;
+
+        case 2:
+            DrawMissionRestrictedUI(race);
             break;
     }
 }

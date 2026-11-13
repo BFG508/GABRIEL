@@ -363,7 +363,7 @@ int main(void) {
             // Dynamic audio logic.
             // We only play engine sounds if the vehicle is still intact!
             if (race.missionFailed) {
-                // Force complete silence on crash
+                // Force complete silence on crash.
                 if (IsSoundPlaying(planeSound)) StopSound(planeSound);
                 if (IsSoundPlaying(helicopterSound)) StopSound(helicopterSound);
             }
