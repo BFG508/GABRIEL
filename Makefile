@@ -105,7 +105,10 @@ endif
 ifeq ($(PLATFORM),PLATFORM_DESKTOP)
     ifeq ($(PLATFORM_OS),LINUX)
         RAYLIB_PREFIX ?= ..
-        RAYLIB_PATH    = $(realpath $(RAYLIB_PREFIX))
+        # Preserve explicit overrides; prefer a local checkout when available.
+        ifeq ($(origin RAYLIB_PATH),file)
+            RAYLIB_PATH = $(if $(wildcard $(HOME)/raylib/src/raylib.h),$(HOME)/raylib,$(realpath $(RAYLIB_PREFIX)))
+        endif
     endif
 endif
 # Default path for raylib on Raspberry Pi, if installed in different path, update it!
@@ -266,7 +269,7 @@ ifeq ($(PLATFORM),PLATFORM_DESKTOP)
     ifeq ($(PLATFORM_OS),LINUX)
         # Reset everything.
         # Precedence: immediately local, installed version, raysan5 provided libs -I$(RAYLIB_H_INSTALL_PATH) -I$(RAYLIB_PATH)/release/include
-        INCLUDE_PATHS = -I$(RAYLIB_H_INSTALL_PATH) -isystem. -isystem$(RAYLIB_PATH)/src -isystem$(RAYLIB_PATH)/release/include -isystem$(RAYLIB_PATH)/src/external
+        INCLUDE_PATHS = -Iinclude -I$(RAYLIB_H_INSTALL_PATH) -isystem. -isystem$(RAYLIB_PATH)/src -isystem$(RAYLIB_PATH)/release/include -isystem$(RAYLIB_PATH)/src/external
     endif
 endif
 
@@ -352,9 +355,11 @@ SRC_DIR = src
 OBJ_DIR = obj
 
 # Define all object files from source files
-SRC = $(call rwildcard, ./, *.c, *.h)
-#OBJS = $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
-OBJS = $(patsubst %.c,%.o,$(filter %.c,$(SRC)))
+SRC = $(call rwildcard,$(SRC_DIR)/,*.c)
+OBJS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRC))
+DEPS = $(OBJS:.o=.d)
+.DEFAULT_GOAL := all
+-include $(DEPS)
 
 # For Android platform we call a custom Makefile.Android
 ifeq ($(PLATFORM),PLATFORM_ANDROID)
@@ -376,9 +381,13 @@ $(PROJECT_NAME): $(OBJS)
 
 # Compile source files
 # NOTE: This pattern will compile every module defined on $(OBJS)
-#%.o: %.c
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
-	$(CC) -c $< -o $@ $(CFLAGS) $(INCLUDE_PATHS) -D$(PLATFORM)
+ifeq ($(PLATFORM_OS),WINDOWS)
+	@if not exist "$(subst /,\,$(@D))" mkdir "$(subst /,\,$(@D))"
+else
+	@mkdir -p "$(@D)"
+endif
+	$(CC) -c "$<" -o "$@" $(CFLAGS) $(INCLUDE_PATHS) -MMD -MP -D$(PLATFORM)
 
 # Clean everything
 clean:
